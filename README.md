@@ -52,6 +52,7 @@ DataLakeDB 是一款分布式数据库系统，专为海量数据存储与实时
 ### slave 
   项目的slave
 # 快速开始
+使用 rust >= 1.85.0 
 ## 启动主节点
 在master文件夹下执行： 
 cargo run --release
