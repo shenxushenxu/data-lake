@@ -62,7 +62,7 @@ impl<'a> Consumer<'a> {
         let re = Statement::stream_read(stream_read);
 
         let json = serde_json::to_string(&re).unwrap();
-        println!("---------------            {}", json);
+
         let bytes = json.as_bytes();
         let bytes_len = bytes.len();
         self.socket.write_i32(bytes_len as i32).await.unwrap();

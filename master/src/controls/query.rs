@@ -142,7 +142,6 @@ pub async fn query_sql(sql: String) -> Result<Option<Vec<String>>, DataLakeError
         res_vec.append(&mut data_map);
     }
 
-    println!("{:?}", res_vec);
 
     if res_vec.len() > 0 {
         return Ok(Some(res_vec));

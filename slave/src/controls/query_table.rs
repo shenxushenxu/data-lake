@@ -57,7 +57,6 @@ pub async fn query(querymessage: QueryMessage) -> Result<Option<Vec<String>>, Da
                         data_structure = bincode::deserialize::<DataStructure>(&message)?;
                     }
 
-                    println!("---- {:?}", data_structure);
                     let major_key = &data_structure.major_key;
                     let crud = &data_structure.crud;
                     let offset = &data_structure.offset;
@@ -132,7 +131,6 @@ pub async fn query(querymessage: QueryMessage) -> Result<Option<Vec<String>>, Da
             return false;
         }).collect::<Vec<String>>();
 
-    println!("{:?}",res_vec);
     if res_vec.len() > 0 {
         return Ok(Some(res_vec));
     }else {
