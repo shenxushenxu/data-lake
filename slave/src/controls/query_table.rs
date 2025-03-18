@@ -2,13 +2,12 @@ use std::collections::HashMap;
 use snap::raw::Decoder;
 use tokio::fs::OpenOptions;
 use tokio::io::AsyncReadExt;
+use entity_lib::entity::Error::DataLakeError;
 use entity_lib::entity::SlaveEntity::{DataStructure, QueryMessage};
 use public_function::SLAVE_CONFIG;
 
-pub async fn query(querymessage: QueryMessage) -> Option<Vec<String>>{
+pub async fn query(querymessage: QueryMessage) -> Result<Option<Vec<String>>, DataLakeError>{
 
-
-    // let mut file_vec = Vec::new();
     let log_path = format!("{}\\{}\\log",SLAVE_CONFIG.get("slave.data").unwrap(), &querymessage.tablename);
     let compress_path = format!("{}\\{}\\compress",SLAVE_CONFIG.get("slave.data").unwrap(), &querymessage.tablename);
 
@@ -37,30 +36,28 @@ pub async fn query(querymessage: QueryMessage) -> Option<Vec<String>>{
 
         let file_path = &file_key.1;
 
-        let mut file = OpenOptions::new().read(true).open(file_path).await.unwrap();
-        // let mut file = BufReader::new(openoptions);
+        let mut file = OpenOptions::new().read(true).open(file_path).await?;
 
         loop {
             match file.read_i32().await {
                 Ok(message_len) => {
                     let mut message = vec![0u8; message_len as usize];
 
-                    file.read_exact(&mut message).await.unwrap();
+                    file.read_exact(&mut message).await?;
 
                     let data_structure;
 
                     if file_path.contains(".snappy") {
                         let mut decoder = Decoder::new();
-                        let message_bytes = decoder.decompress_vec(&message).unwrap_or_else(|e| panic!("解压失败: {}", e));
+                        let message_bytes = decoder.decompress_vec(&message)?;
 
-                        let message_str = std::str::from_utf8(&message_bytes).unwrap();
-                        data_structure = serde_json::from_str::<DataStructure>(message_str).unwrap();
+                        let message_str = std::str::from_utf8(&message_bytes)?;
+                        data_structure = serde_json::from_str::<DataStructure>(message_str)?;
                     }else {
-                        data_structure = bincode::deserialize::<DataStructure>(&message).unwrap();
+                        data_structure = bincode::deserialize::<DataStructure>(&message)?;
                     }
 
-
-
+                    println!("---- {:?}", data_structure);
                     let major_key = &data_structure.major_key;
                     let crud = &data_structure.crud;
                     let offset = &data_structure.offset;
@@ -72,13 +69,13 @@ pub async fn query(querymessage: QueryMessage) -> Option<Vec<String>>{
                                 if offset > map_data_offset {
                                     res_map.insert(major_key.clone(), data_structure);
                                 } else {
-                                    panic!("奶奶的，offset出毛病了")
+                                    return Err(DataLakeError::CustomError("奶奶的，offset出毛病了".to_string()));
                                 }
                             }
                             "delete" => {
                                 res_map.remove(major_key);
                             }
-                            _ => (panic!("存在没有被定义的  crud 操作: {:?}", data_structure)),
+                            _ => return Err(DataLakeError::CustomError(format!("存在没有被定义的  crud 操作: {:?}", data_structure))),
                         },
                         None => match crud.as_str() {
                             "insert" => {
@@ -87,7 +84,7 @@ pub async fn query(querymessage: QueryMessage) -> Option<Vec<String>>{
                             "delete" => {
                                 res_map.remove(major_key);
                             }
-                            _ => (panic!("存在没有被定义的  crud 操作: {:?}", data_structure)),
+                            _ => return Err(DataLakeError::CustomError(format!("存在没有被定义的  crud 操作: {:?}", data_structure))),
                         },
                     }
                 }
@@ -98,10 +95,6 @@ pub async fn query(querymessage: QueryMessage) -> Option<Vec<String>>{
             }
         }
     }
-
-
-
-
 
     let res_vec = res_map.into_iter().map(|(k, v)| v.data)
         .filter(|x| {
@@ -139,12 +132,11 @@ pub async fn query(querymessage: QueryMessage) -> Option<Vec<String>>{
             return false;
         }).collect::<Vec<String>>();
 
-
-    println!("{:?}", res_vec);
+    println!("{:?}",res_vec);
     if res_vec.len() > 0 {
-        return Some(res_vec);
+        return Ok(Some(res_vec));
     }else {
-        return None;
+        return Ok(None);
     }
 
 

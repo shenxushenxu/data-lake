@@ -5,6 +5,7 @@ use memmap2::MmapMut;
 use tokio::fs::OpenOptions;
 use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 use tokio::sync::Mutex;
+use entity_lib::entity::Error::DataLakeError;
 use entity_lib::entity::MasterEntity::Insert;
 use entity_lib::entity::SlaveEntity::{DataStructure, IndexStruct, SlaveCacheStruct};
 use public_function::SLAVE_CONFIG;
@@ -16,7 +17,7 @@ pub static FILE_CACHE_POOL: LazyLock<Mutex<HashMap<String, SlaveCacheStruct>>> =
         Mutex::new(file_cache_pool)
     });
 
-pub async fn insert_operation(insert: Insert) {
+pub async fn insert_operation(insert: Insert) -> Result<(), DataLakeError>{
 
 
     let table_name = insert.table_name;
@@ -114,7 +115,7 @@ pub async fn insert_operation(insert: Insert) {
 
     let offset = i64::from_be_bytes((&metadata_mmap[..]).try_into().unwrap());
 
-    let start_seek = data_file.seek(SeekFrom::End(0)).await.unwrap();
+    let start_seek = data_file.seek(SeekFrom::End(0)).await?;
 
 
     let data = DataStructure {
@@ -126,13 +127,13 @@ pub async fn insert_operation(insert: Insert) {
         offset: offset,
     };
 
-    let bincode_data = bincode::serialize(&data).unwrap();
+    let bincode_data = bincode::serialize(&data)?;
     let data_len = bincode_data.len() as i32;
 
-    data_file.write_i32(data_len).await.unwrap();
-    data_file.write_all(&bincode_data).await.unwrap();
+    data_file.write_i32(data_len).await?;
+    data_file.write_all(&bincode_data).await?;
 
-    let end_seek = data_file.seek(SeekFrom::End(0)).await.unwrap();
+    let end_seek = data_file.seek(SeekFrom::End(0)).await?;
 
     let index_struct = IndexStruct {
         offset: offset,
@@ -140,8 +141,8 @@ pub async fn insert_operation(insert: Insert) {
         end_seek: end_seek,
     };
 
-    let index_data = bincode::serialize(&index_struct).unwrap();
-    index_file.write_all(&index_data).await.unwrap();
+    let index_data = bincode::serialize(&index_struct)?;
+    index_file.write_all(&index_data).await?;
 
 
 
@@ -155,13 +156,14 @@ pub async fn insert_operation(insert: Insert) {
     }
 
 
-    if end_seek > (SLAVE_CONFIG.get("slave.file.segment.bytes").unwrap().parse::<u64>().unwrap()){
+    if end_seek > (SLAVE_CONFIG.get("slave.file.segment.bytes").unwrap().parse::<u64>()?){
 
-        data_file.flush().await.unwrap();
-        index_file.flush().await.unwrap();
+        data_file.flush().await?;
+        index_file.flush().await?;
 
         mutex_map.remove(&file_key);
     }
 
 
+    return Ok(());
 }

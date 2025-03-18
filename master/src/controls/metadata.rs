@@ -1,9 +1,10 @@
 use memmap2::Mmap;
 use tokio::fs::OpenOptions;
+use entity_lib::entity::Error::DataLakeError;
 use entity_lib::entity::MasterEntity::TableStructure;
 use public_function::MASTER_CONFIG;
 
-pub async fn get_metadata(table_name: &str) -> TableStructure{
+pub async fn get_metadata(table_name: &str) -> Result<TableStructure, DataLakeError> {
     let file_path = format!(
             "{}\\{}",
             MASTER_CONFIG.get("master.data.path").unwrap(),
@@ -16,12 +17,12 @@ pub async fn get_metadata(table_name: &str) -> TableStructure{
         .await
         .unwrap();
 
-    let mut mmap = unsafe{Mmap::map(&file).unwrap()};
+    let mut mmap = unsafe{Mmap::map(&file)?};
 
     let metadata_message = &mmap[..];
 
 
-    let table_structure = bincode::deserialize::<TableStructure>(metadata_message).unwrap();
+    let table_structure = bincode::deserialize::<TableStructure>(metadata_message)?;
 
-    return table_structure;
+    return Ok(table_structure);
 }

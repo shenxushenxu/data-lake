@@ -1,3 +1,5 @@
+pub mod pub_function;
+
 use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 use entity_lib::entity::MasterEntity::{BatchInsert, Create, MasterStreamRead, MesterInsert};

@@ -146,9 +146,11 @@ dependencies = [
 name = "entity_lib"
 version = "0.1.0"
 dependencies = [
+ "bincode",
  "memmap2",
  "serde",
  "serde_json",
+ "snap",
  "tokio",
 ]
 
@@ -341,6 +343,10 @@ dependencies = [
 name = "public_function"
 version = "0.1.0"
 dependencies = [
+ "bincode",
+ "entity_lib",
+ "serde",
+ "serde_json",
  "tokio",
 ]
 

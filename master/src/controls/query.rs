@@ -1,10 +1,11 @@
 use std::sync::Arc;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
+use entity_lib::entity::Error::DataLakeError;
 use entity_lib::entity::SlaveEntity::{QueryMessage, SlaveMessage};
 use crate::controls::metadata::get_metadata;
 
-pub async fn query_sql(sql: String) -> Option<Vec<String>> {
+pub async fn query_sql(sql: String) -> Result<Option<Vec<String>>, DataLakeError> {
 
     let convert_sql = sql.trim().to_lowercase();
 
@@ -62,7 +63,7 @@ pub async fn query_sql(sql: String) -> Option<Vec<String>> {
 
 
 
-    let table_structure =  get_metadata(table_name).await;
+    let table_structure =  get_metadata(table_name).await?;
 
     let address_map = &table_structure.partition_address;
 
@@ -80,7 +81,7 @@ pub async fn query_sql(sql: String) -> Option<Vec<String>> {
 
         let slave_message = SlaveMessage::query(querymessage);
 
-        let bytes = Arc::new(bincode::serialize(&slave_message).unwrap());
+        let bytes = Arc::new(bincode::serialize(&slave_message)?);
         let bytes_len = bytes.len();
 
 
@@ -89,40 +90,54 @@ pub async fn query_sql(sql: String) -> Option<Vec<String>> {
         let se = sender.clone();
 
         tokio::spawn(async move{
-            let mut stream = TcpStream::connect(address).await.unwrap();
+            let mut stream = TcpStream::connect(address).await?;
 
 
-            stream.write_i32(bytes_len.clone() as i32).await.unwrap();
-            stream.write_all(&bytes).await.unwrap();
+            stream.write_i32(bytes_len.clone() as i32).await?;
+            stream.write_all(&bytes).await?;
 
             loop {
                 match stream.read_i32().await{
                     Ok(mess_len) => {
-                        let mut mess = vec![0u8; mess_len as usize];
-                        stream.read_exact(&mut mess).await.unwrap();
-                        let data_map = bincode::deserialize::<Option<Vec<String>>>(&mess).unwrap();
 
-                        if let Some(data) = data_map {
-                            if let Err(_) = se.send(data).await {
-                                println!("receiver dropped");
-                                return;
+                        if mess_len == -1 {
+                            break;
+                        }else if mess_len == -2 {
+
+                            let len = stream.read_i32().await?;
+
+                            let mut mess = vec![0u8;len as usize];
+                            stream.read_exact(&mut mess).await?;
+                            let dd = String::from_utf8(mess)?;
+                            return Err(DataLakeError::CustomError(dd));
+
+                        }else {
+                            let mut mess = vec![0u8; mess_len as usize];
+                            stream.read_exact(&mut mess).await?;
+                            let data_map = bincode::deserialize::<Option<Vec<String>>>(&mess)?;
+
+                            if let Some(data) = data_map {
+                                if let Err(_) = se.send(data).await {
+                                    println!("receiver dropped");
+                                    break;
+                                }
                             }
-
                         }
-
                     }
                     Err(_) => {
                         break;
                     }
                 }
             }
+
+            Ok(())
         });
     }
 
     drop(sender);
     let mut res_vec = Vec::<String>::new();
 
-    for mut data_map in receiver.recv().await{
+    while let Some(mut data_map) =  receiver.recv().await{
 
         res_vec.append(&mut data_map);
     }
@@ -130,9 +145,9 @@ pub async fn query_sql(sql: String) -> Option<Vec<String>> {
     println!("{:?}", res_vec);
 
     if res_vec.len() > 0 {
-        return Some(res_vec);
+        return Ok(Some(res_vec));
     }else {
-        return None;
+        return Ok(None);
     }
 
 

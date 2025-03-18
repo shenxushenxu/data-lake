@@ -1,9 +1,9 @@
 use std::collections::HashMap;
 use std::sync::LazyLock;
-use tokio::io::{AsyncBufReadExt, BufReader};
-
-
-
+use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt};
+use tokio::net::tcp::{ReadHalf, WriteHalf};
+use tokio::net::TcpStream;
+use entity_lib::entity::Error::DataLakeError;
 
 pub static MASTER_CONFIG: LazyLock<HashMap<String,String>> = LazyLock::new(|| {
     let file_path = r"D:\rustproject\data-lake\config\master_config.properties";
@@ -110,3 +110,41 @@ pub async fn get_list_filename(path:&str) -> Vec<(String,String)> {
     return file_name_vec;
 
 }
+
+/**
+发送异常
+**/
+pub async fn write_error(err: DataLakeError, write_half: &mut WriteHalf<'_>){
+
+    write_half.write_i32(-2).await.unwrap();
+
+    let err_mess = format!("{}",err);
+    let bytes = err_mess.as_bytes();
+    let bytes_len = bytes.len();
+
+    write_half.write_i32(bytes_len as i32).await.unwrap();
+    write_half.write_all(bytes).await.unwrap();
+
+}
+
+
+/**
+读取异常
+**/
+pub async fn read_error(stream: &mut TcpStream) -> Result<(),DataLakeError>{
+    let is = stream.read_i32().await?;
+    if is == -2 {
+
+        let len = stream.read_i32().await?;
+
+        let mut mess = vec![0u8;len as usize];
+        stream.read_exact(&mut mess).await?;
+        let dd = String::from_utf8(mess)?;
+        return Err(DataLakeError::CustomError(dd));
+    }
+
+    return Ok(());
+}
+
+
+

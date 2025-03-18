@@ -8,6 +8,7 @@ use public_function::SLAVE_CONFIG;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
 use tokio::task::JoinHandle;
+use entity_lib::entity::Error::DataLakeError;
 use crate::controls::compress_table::compress_table;
 use crate::controls::create_table::create_table_controls;
 use crate::controls::insert_data::insert_operation;
@@ -46,46 +47,93 @@ fn data_read_write() -> JoinHandle<()> {
 
                             read.read_exact(&mut message).await.unwrap();
 
-                            let slave_message =
-                                bincode::deserialize::<SlaveMessage>(&message).unwrap();
+                            let slave_message = bincode::deserialize::<SlaveMessage>(&message).unwrap();
 
                             match slave_message {
                                 SlaveMessage::create(create_message) => {
-                                    if let Err(e) =
-                                        create_table_controls(create_message).await
-                                    {
-                                        error!("Error creating table: {:?}", e);
+                                    let create_return = create_table_controls(create_message).await;
+
+                                    match create_return {
+                                        Ok(_) => {
+                                            write.write_i32(-1).await.unwrap();
+                                        }
+                                        Err(e) => {
+                                            public_function::write_error(e, &mut write).await;
+                                        }
                                     }
+
                                 }
                                 SlaveMessage::insert(insert) => {
-                                    insert_operation(insert).await;
+                                    let insert_data = insert_operation(insert).await;
+                                    match insert_data {
+                                        Ok(_) => {
+                                            write.write_i32(-1).await.unwrap();
+                                        }
+                                        Err(e) => {
+                                            public_function::write_error(e, &mut write).await;
+                                        }
+                                    }
                                 }
                                 SlaveMessage::compress_table(table_name) => {
-                                    compress_table(&table_name).await;
+                                    let compress_return = compress_table(&table_name).await;
+                                    match compress_return {
+                                        Ok(_) => {
+                                            write.write_i32(-1).await.unwrap();
+                                        }
+                                        Err(e) => {
+                                            public_function::write_error(e, &mut write).await;
+                                        }
+                                    }
                                 }
                                 SlaveMessage::query(querymessage) => {
-                                    let vec = query(querymessage).await;
-                                    let bincode_bytes = bincode::serialize(&vec).unwrap();
+                                    let query_return = query(querymessage).await;
+                                    match query_return {
+                                        Ok(vec) => {
+                                            let bincode_bytes = bincode::serialize(&vec).unwrap();
 
-                                    write.write_i32(bincode_bytes.len() as i32).await.unwrap();
-                                    write.write_all(&bincode_bytes).await.unwrap();
-                                }
-                                SlaveMessage::stream_read(stream_read_message) => {
-                                    let message = stream_read(&stream_read_message).await;
-                                    if message.len() == 0{
-                                        write.write_i32(-1).await.unwrap();
-
-                                    }else {
-                                        write.write_i32(message.len() as i32).await.unwrap();
-                                        write.write_all(&message).await.unwrap();
+                                            write.write_i32(bincode_bytes.len() as i32).await.unwrap();
+                                            write.write_all(&bincode_bytes).await.unwrap();
+                                            write.write_i32(-1).await.unwrap();
+                                        }
+                                        Err(e) => {
+                                            public_function::write_error(e, &mut write).await;
+                                        }
                                     }
 
+
+                                }
+                                SlaveMessage::stream_read(stream_read_message) => {
+                                    let stream_return = stream_read(&stream_read_message).await;
+
+                                    match stream_return {
+                                        Ok(stream_message) => {
+
+                                            match stream_message{
+                                                None => {write.write_i32(-1).await.unwrap();}
+
+                                                Some(stream_me) => {
+                                                    write.write_i32(stream_me.len() as i32).await.unwrap();
+                                                    write.write_all(&stream_me).await.unwrap();
+                                                }
+                                            }
+                                        }
+                                        Err(e) => {
+                                            public_function::write_error(e, &mut write).await;
+                                        }
+                                    }
                                 }
                                 SlaveMessage::batch_insert(batch) => {
-                                    // println!("Batch insert {:?}", batch);
-                                    controls::batch_insert::batch_insert_data(batch).await;
 
+                                    let batch_return = controls::batch_insert::batch_insert_data(batch).await;
 
+                                    match batch_return {
+                                        Ok(_) => {
+                                            write.write_i32(-1).await.unwrap();
+                                        }
+                                        Err(e) => {
+                                            public_function::write_error(e, &mut write).await;
+                                        }
+                                    }
 
                                 }
                             }

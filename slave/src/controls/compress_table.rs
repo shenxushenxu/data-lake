@@ -4,10 +4,11 @@ use snap::raw::{Decoder, Encoder};
 use tokio::fs::OpenOptions;
 use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 use uuid::Uuid;
+use entity_lib::entity::Error::DataLakeError;
 use entity_lib::entity::SlaveEntity::{DataStructure, IndexStruct};
 use public_function::SLAVE_CONFIG;
 
-pub async fn compress_table(table_name: &String) {
+pub async fn compress_table(table_name: &String) -> Result<(), DataLakeError>{
 
     let data_path = SLAVE_CONFIG.get("slave.data").unwrap();
     let log_path = format!("{}/{}/log", data_path, table_name);
@@ -48,14 +49,14 @@ pub async fn compress_table(table_name: &String) {
     for file_value in file_vec.iter() {
         let file_path = &file_value.1;
 
-        let mut file = OpenOptions::new().read(true).open(file_path).await.unwrap();
+        let mut file = OpenOptions::new().read(true).open(file_path).await?;
 
         loop {
             match file.read_i32().await {
                 Ok(message_len) => {
                     let mut message = vec![0u8; message_len as usize];
 
-                    file.read_exact(&mut message).await.unwrap();
+                    file.read_exact(&mut message).await?;
 
                     let data_structure;
 
@@ -65,11 +66,10 @@ pub async fn compress_table(table_name: &String) {
                             .decompress_vec(&message)
                             .unwrap_or_else(|e| panic!("解压失败: {}", e));
 
-                        let message_str = std::str::from_utf8(&message_bytes).unwrap();
-                        data_structure =
-                            serde_json::from_str::<DataStructure>(message_str).unwrap();
+                        let message_str = std::str::from_utf8(&message_bytes)?;
+                        data_structure = serde_json::from_str::<DataStructure>(message_str)?;
                     } else {
-                        data_structure = bincode::deserialize::<DataStructure>(&message).unwrap();
+                        data_structure = bincode::deserialize::<DataStructure>(&message)?;
                     }
 
                     let major_key = &data_structure.major_key;
@@ -83,13 +83,15 @@ pub async fn compress_table(table_name: &String) {
                                 if offset > map_data_offset {
                                     res_map.insert(major_key.clone(), data_structure);
                                 } else {
-                                    panic!("奶奶的，offset出毛病了")
+                                    return Err(DataLakeError::CustomError("奶奶的，offset出毛病了".to_string()))
                                 }
                             }
                             "delete" => {
                                 res_map.remove(major_key);
                             }
-                            _ => (panic!("存在没有被定义的  crud 操作: {:?}", data_structure)),
+                            _ => {
+                                return Err(DataLakeError::CustomError(format!("存在没有被定义的  crud 操作: {:?}", data_structure)))
+                            }
                         },
                         None => match crud.as_str() {
                             "insert" => {
@@ -98,7 +100,9 @@ pub async fn compress_table(table_name: &String) {
                             "delete" => {
                                 res_map.remove(major_key);
                             }
-                            _ => (panic!("存在没有被定义的  crud 操作: {:?}", data_structure)),
+                            _ => {
+                                return Err(DataLakeError::CustomError(format!("存在没有被定义的  crud 操作: {:?}", data_structure)))
+                            }
                         },
                     }
                 }
@@ -120,39 +124,37 @@ pub async fn compress_table(table_name: &String) {
         .write(true)
         .append(true)
         .open(format!("{}\\{}.snappy", &compress_path, tmp_file_name))
-        .await
-        .unwrap();
+        .await?;
+
     let mut index_file = OpenOptions::new()
         .create(true)
         .write(true)
         .append(true)
         .open(format!("{}\\{}.index", &compress_path, tmp_file_name))
-        .await
-        .unwrap();
+        .await?;
 
     let mut offset: i64 = 0;
 
     let file_max_capacity = SLAVE_CONFIG
         .get("slave.file.segment.bytes")
         .unwrap()
-        .parse::<u64>()
-        .unwrap();
+        .parse::<u64>()?;
 
     for (key, value) in res_map.iter_mut() {
 
         value.offset = offset;
-        let json_value = serde_json::to_string_pretty(&value).unwrap();
+        let json_value = serde_json::to_string_pretty(&value)?;
 
         let mut encoder = Encoder::new();
-        let compressed_data = encoder.compress_vec(json_value.as_bytes()).unwrap();
+        let compressed_data = encoder.compress_vec(json_value.as_bytes())?;
 
         let data_len = compressed_data.len() as i32;
 
-        let start_seek = compress_file.seek(SeekFrom::End(0)).await.unwrap();
+        let start_seek = compress_file.seek(SeekFrom::End(0)).await?;
 
-        compress_file.write_i32(data_len).await.unwrap();
-        compress_file.write_all(&compressed_data).await.unwrap();
-        let end_seek = compress_file.seek(SeekFrom::End(0)).await.unwrap();
+        compress_file.write_i32(data_len).await?;
+        compress_file.write_all(&compressed_data).await?;
+        let end_seek = compress_file.seek(SeekFrom::End(0)).await?;
 
         let index_struct = IndexStruct {
             offset: offset,
@@ -160,8 +162,8 @@ pub async fn compress_table(table_name: &String) {
             end_seek: end_seek
         };
 
-        let offset_struct = bincode::serialize(&index_struct).unwrap();
-        index_file.write_all(&offset_struct).await.unwrap();
+        let offset_struct = bincode::serialize(&index_struct)?;
+        index_file.write_all(&offset_struct).await?;
 
         offset += 1;
 
@@ -173,16 +175,14 @@ pub async fn compress_table(table_name: &String) {
                 .write(true)
                 .append(true)
                 .open(format!("{}\\{}.snappy", &compress_path, tmp_file_name))
-                .await
-                .unwrap();
+                .await?;
 
             index_file = OpenOptions::new()
                 .create(true)
                 .write(true)
                 .append(true)
                 .open(format!("{}\\{}.index", &compress_path, tmp_file_name))
-                .await
-                .unwrap();
+                .await?;
 
             tmpfile_offsetCode.insert(tmp_file_name.clone(), offset);
         }
@@ -194,11 +194,11 @@ pub async fn compress_table(table_name: &String) {
 
         let file_path = &file_key.1;
 
-        std::fs::remove_file(file_path).unwrap();
+        std::fs::remove_file(file_path)?;
         let index_file_path = file_path
             .replace(".snappy", ".index")
             .replace(".log", ".index");
-        std::fs::remove_file(index_file_path).unwrap();
+        std::fs::remove_file(index_file_path)?;
     }
 
     // 将临时文件的名字，改为正经数据文件的名字
@@ -210,7 +210,9 @@ pub async fn compress_table(table_name: &String) {
         let new_snappy = format!("{}\\{}.snappy", &compress_path, offset_name);
         let new_index = format!("{}\\{}.index", &compress_path, offset_name);
 
-        std::fs::rename(old_snappy, new_snappy).unwrap();
-        std::fs::rename(old_index, new_index).unwrap();
+        std::fs::rename(old_snappy, new_snappy)?;
+        std::fs::rename(old_index, new_index)?;
     }
+
+    return Ok(());
 }

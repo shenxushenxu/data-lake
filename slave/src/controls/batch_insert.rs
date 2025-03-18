@@ -2,17 +2,20 @@ use std::io::SeekFrom;
 use memmap2::MmapMut;
 use tokio::fs::OpenOptions;
 use tokio::io::{AsyncSeekExt, AsyncWriteExt};
+use entity_lib::entity::Error::DataLakeError;
 use entity_lib::entity::MasterEntity::{BatchInsert, Insert, SlaveInsert};
 use entity_lib::entity::SlaveEntity::{DataStructure, IndexStruct, SlaveCacheStruct};
 use public_function::SLAVE_CONFIG;
 use crate::controls::insert_data::FILE_CACHE_POOL;
 
-pub async  fn batch_insert_data(batch_insert: SlaveInsert) {
-    insert_operation(&batch_insert).await;
+pub async  fn batch_insert_data(batch_insert: SlaveInsert) -> Result<(), DataLakeError>{
+    insert_operation(&batch_insert).await?;
+
+    return Ok(());
 }
 
 
-pub async fn insert_operation(batch_insert: &SlaveInsert) {
+pub async fn insert_operation(batch_insert: &SlaveInsert) -> Result<(), DataLakeError> {
 
     let mut mutex_map= FILE_CACHE_POOL.lock().await;
 
@@ -51,11 +54,9 @@ pub async fn insert_operation(batch_insert: &SlaveInsert) {
                     .write(true)
                     .create(true)
                     .open(metadata_file_path)
-                    .await
-                    .unwrap();
-                let mut metadata_mmap = unsafe {MmapMut::map_mut(&metadata_file).unwrap()};
+                    .await?;
+                let mut metadata_mmap = unsafe {MmapMut::map_mut(&metadata_file)?};
 
-                // let offset_file_name = i64::from_be_bytes((&metadata_mmap[..]).try_into().unwrap());
 
                 let offset_file_name = match offset_init{
                     Some(offset) => {
@@ -89,16 +90,15 @@ pub async fn insert_operation(batch_insert: &SlaveInsert) {
                     .create(true)
                     .append(true)
                     .open(log_file_path)
-                    .await
-                    .unwrap();
+                    .await?;
 
                 let mut index_file = OpenOptions::new()
                     .write(true)
                     .create(true)
                     .append(true)
                     .open(index_file_path)
-                    .await
-                    .unwrap();
+                    .await?;
+
                 let slave_cache_struct = SlaveCacheStruct {
                     data_file: log_file,
                     index_file: index_file,
@@ -131,7 +131,7 @@ pub async fn insert_operation(batch_insert: &SlaveInsert) {
 
         // let offset = i64::from_be_bytes((&metadata_mmap[..]).try_into().unwrap());
 
-        let start_seek = data_file.seek(SeekFrom::End(0)).await.unwrap();
+        let start_seek = data_file.seek(SeekFrom::End(0)).await?;
 
 
         let data = DataStructure {
@@ -143,13 +143,13 @@ pub async fn insert_operation(batch_insert: &SlaveInsert) {
             offset: offset,
         };
 
-        let bincode_data = bincode::serialize(&data).unwrap();
+        let bincode_data = bincode::serialize(&data)?;
         let data_len = bincode_data.len() as i32;
 
-        data_file.write_i32(data_len).await.unwrap();
-        data_file.write_all(&bincode_data).await.unwrap();
+        data_file.write_i32(data_len).await?;
+        data_file.write_all(&bincode_data).await?;
 
-        let end_seek = data_file.seek(SeekFrom::End(0)).await.unwrap();
+        let end_seek = data_file.seek(SeekFrom::End(0)).await?;
 
         let index_struct = IndexStruct {
             offset: offset,
@@ -157,8 +157,8 @@ pub async fn insert_operation(batch_insert: &SlaveInsert) {
             end_seek: end_seek,
         };
 
-        let index_data = bincode::serialize(&index_struct).unwrap();
-        index_file.write_all(&index_data).await.unwrap();
+        let index_data = bincode::serialize(&index_struct)?;
+        index_file.write_all(&index_data).await?;
 
 
 
@@ -167,10 +167,10 @@ pub async fn insert_operation(batch_insert: &SlaveInsert) {
 
         offset_init = Some(offset + 1);
 
-        if end_seek > (SLAVE_CONFIG.get("slave.file.segment.bytes").unwrap().parse::<u64>().unwrap()){
+        if end_seek > (SLAVE_CONFIG.get("slave.file.segment.bytes").unwrap().parse::<u64>()?){
 
-            data_file.flush().await.unwrap();
-            index_file.flush().await.unwrap();
+            data_file.flush().await?;
+            index_file.flush().await?;
 
             mutex_map.remove(&file_key);
         }
@@ -188,10 +188,12 @@ pub async fn insert_operation(batch_insert: &SlaveInsert) {
     };
     unsafe {
         let dst_ptr = metadata_mmap.as_mut_ptr();
-        let slice = (offset + 1).to_be_bytes();
+        let slice = offset.to_be_bytes();
         let src_ptr = slice.as_ptr();
 
         std::ptr::copy_nonoverlapping(src_ptr, dst_ptr, slice.len());
     }
+
+    return Ok(());
 
 }

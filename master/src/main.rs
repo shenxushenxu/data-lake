@@ -2,11 +2,13 @@
 mod controls;
 use log::{error, info};
 use serde_json::json;
-use public_function::{MASTER_CONFIG, hashcode};
+use public_function::{MASTER_CONFIG, hashcode, write_error};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
+use tokio::sync::mpsc::Receiver;
 use tokio::task::JoinHandle;
 use uuid::Uuid;
+use entity_lib::entity::Error::DataLakeError;
 use entity_lib::entity::MasterEntity::Statement;
 use crate::controls::compress_table::{compress_table};
 use crate::controls::create::{create_table};
@@ -15,6 +17,10 @@ use crate::controls::metadata::{get_metadata};
 use crate::controls::query::{query_sql};
 use crate::controls::stream_read::{stream_read_data, STREAM_TCP};
 
+/**
+-1 是停止
+-2 是异常
+**/
 #[tokio::main]
 async fn main() {
     // 初始化日志系统
@@ -56,76 +62,116 @@ fn data_interface() -> JoinHandle<()> {
 
                             match statement {
                                 Statement::create(create_struct) => {
-                                    if let Err(e) = create_table(create_struct).await {
-                                        error!("create failed {}", e);
+                                    let create_return = create_table(create_struct).await;
+
+                                    match create_return {
+                                        Ok(_) => {
+                                            write.write_i32(-1).await.unwrap();
+                                        }
+                                        Err(e) => {
+                                            public_function::write_error(e, &mut write).await;
+                                        }
                                     }
                                 }
                                 Statement::insert(insert) => {
-                                    insert_data(insert, &uuid).await;
+                                    let insert_return = insert_data(insert, &uuid).await;
+                                    match insert_return {
+                                        Ok(_) => {
+                                            write.write_i32(-1).await.unwrap();
+                                        }
+                                        Err(e) => {
+                                            public_function::write_error(e, &mut write).await;
+                                        }
+                                    };
                                 }
                                 Statement::metadata(table_name) => {
-                                    let table_structure =
-                                        get_metadata(&table_name).await;
+                                    let metadata_return = get_metadata(&table_name).await;
+                                    match metadata_return {
+                                        Ok(table_structure) => {
+                                            let metadtat_message = serde_json::to_string(&table_structure).unwrap();
+                                            let byt = metadtat_message.as_bytes();
 
-                                    let metadtat_message =
-                                        serde_json::to_string(&table_structure).unwrap();
-                                    let byt = metadtat_message.as_bytes();
+                                            let write_len = byt.len();
+                                            let write_message = byt;
 
-                                    let write_len = byt.len();
-                                    let write_message = byt;
-
-                                    write.write_i32(write_len as i32).await.unwrap();
-                                    write.write_all(write_message).await.unwrap();
+                                            write.write_i32(write_len as i32).await.unwrap();
+                                            write.write_all(write_message).await.unwrap();
+                                        }
+                                       Err(e) => {
+                                           public_function::write_error(e, &mut write).await;
+                                       }
+                                    }
                                 }
                                 Statement::compress_table(table_name) => {
-                                    compress_table(&table_name).await;
+                                    let compress_return = compress_table(&table_name).await;
+
+                                    match compress_return {
+                                        Ok(_) => {
+                                            write.write_i32(-1).await.unwrap();
+                                        }
+                                        Err(e) => {
+                                            public_function::write_error(e, &mut write).await;
+                                        }
+                                    }
+
                                 }
                                 Statement::query(sql) => {
 
-                                    let res_vec = query_sql(sql).await;
+                                    let query_return = query_sql(sql).await;
 
-                                    if let Some(vec) = res_vec {
+                                    match query_return {
+                                        Ok(res_vec) => {
+                                            if let Some(vec) = res_vec {
+                                                for ve in vec {
+                                                    let byt = ve.as_bytes();
+                                                    let write_len = byt.len();
+                                                    write.write_i32(write_len as i32).await.unwrap();
+                                                    write.write_all(byt).await.unwrap();
+                                                }
+                                            }
+                                                write.write_i32(-1).await.unwrap();
 
-                                        // let json = r#"{"code":1}"#;
-                                        //
-                                        // let byt = json.as_bytes();
-                                        // let write_len = byt.len();
-                                        // write.write_i32(write_len as i32).await.unwrap();
-                                        // write.write_all(byt).await.unwrap();
-
-                                        for ve in vec {
-
-                                            let byt = ve.as_bytes();
-                                            let write_len = byt.len();
-
-                                            write.write_i32(write_len as i32).await.unwrap();
-                                            write.write_all(byt).await.unwrap();
                                         }
-                                        write.write_i32(-1).await.unwrap();
-                                    }else {
-                                        write.write_i32(-1).await.unwrap();
+                                        Err(e) => {
+                                            public_function::write_error(e, &mut write).await;
+                                        }
                                     }
+
+
+
                                 }
                                 Statement::stream_read(stream_read) => {
 
 
-                                    let mut receiver = stream_read_data(stream_read, &uuid).await;
+                                    let stream_return = stream_read_data(stream_read, &uuid).await;
 
-                                    while let Some(message) = receiver.recv().await {
-
-                                        if let Some(message_bytes) = message {
-                                            write.write_all(&message_bytes).await.unwrap();
+                                    match stream_return {
+                                        Ok(mut receiver) => {
+                                            while let Some(message) = receiver.recv().await {
+                                                if let Some(message_bytes) = message {
+                                                    write.write_all(&message_bytes).await.unwrap();
+                                                }
+                                            }
+                                            write.write_i32(-1).await.unwrap();
+                                        }
+                                        Err(e) => {
+                                            public_function::write_error(e, &mut write).await;
                                         }
                                     }
-
-                                    write.write_i32(-1).await.unwrap();
-
-
                                 }
 
                                 Statement::batch_insert(batch) => {
 
-                                    controls::batch_insert::batch_insert_data(batch, &uuid).await;
+                                    let batch_return = controls::batch_insert::batch_insert_data(batch, &uuid).await;
+
+                                    match batch_return {
+                                        Ok(_) => {
+                                            write.write_i32(-1).await.unwrap();
+                                        }
+                                        Err(e) => {
+                                            public_function::write_error(e, &mut write).await;
+                                        }
+                                    }
 
                                 }
 
