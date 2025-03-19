@@ -120,10 +120,9 @@ async fn main() {
 
                     for v in vec.iter() {
                         println!("> {}", v);
-
                     }
-
-                    tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+                    io::stdout().flush().unwrap();
+                    // tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
                 }
 
             }

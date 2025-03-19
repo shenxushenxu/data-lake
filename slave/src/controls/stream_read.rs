@@ -56,16 +56,21 @@ pub async fn stream_read(
 
     let mut offset = streamreadstruct.offset;
     let mut read_count = streamreadstruct.read_count;
-    let index_path = binary_search(&file_vec, offset).await?;
-    println!("index_path:  {:?}", index_path);
-    let data = find_data(index_path, offset, read_count).await?;
-    println!("data:  {:?}", data);
+    let option_index_path = binary_search(&file_vec, offset).await?;
 
-    return Ok(data);
+    match option_index_path {
+        None => {
+            return Ok(None);
+        }
+        Some(index_path) => {
+            let data = find_data(index_path, offset, read_count).await?;
+            return Ok(data);
+        }
+    }
 }
 
 /*找到 offset 存在的索引文件*/
-async fn binary_search<'a>(file_vec: &'a Vec<&(String, String)>, offset: i64) -> Result<&'a String, DataLakeError> {
+async fn binary_search<'a>(file_vec: &'a Vec<&(String, String)>, offset: i64) -> Result<Option<&'a String>, DataLakeError> {
 
     for index in 0..file_vec.len() {
         let (this_index_name, this_index_path) = file_vec[index];
@@ -85,13 +90,13 @@ async fn binary_search<'a>(file_vec: &'a Vec<&(String, String)>, offset: i64) ->
 
 
         if file_end_offset >= offset {
-            return Ok(this_index_path);
+            return Ok(Some(this_index_path));
         }
     }
 
-    let index_path = &file_vec.last().unwrap().1;
+    // let index_path = &file_vec.last().unwrap().1;
 
-    return Ok(index_path);
+    return Ok(None);
 }
 
 
