@@ -1,3 +1,5 @@
+pub mod read_function;
+
 use std::collections::HashMap;
 use std::sync::LazyLock;
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt};

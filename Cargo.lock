@@ -345,9 +345,12 @@ version = "0.1.0"
 dependencies = [
  "bincode",
  "entity_lib",
+ "memmap2",
  "serde",
  "serde_json",
+ "snap",
  "tokio",
+ "uuid",
 ]
 
 [[package]]
