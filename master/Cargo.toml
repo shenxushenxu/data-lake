@@ -12,6 +12,7 @@ memmap2 = {workspace = true}
 uuid = {workspace = true}
 log = {workspace = true}
 env_logger = {workspace = true}
+snap = {workspace = true}
 
 entity_lib = {path = "../entity_lib"}
 public_function = {path = "../public_function"}

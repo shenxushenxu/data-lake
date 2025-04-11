@@ -175,14 +175,8 @@ async fn load_data(
         None => panic!("妈的二分查找没找到对应的offset"),
     } as usize;
 
-    let mut data_file;
-    if file_path.contains("log") {
-        let data_path = file_path.replace(".index", ".log");
-        data_file = OpenOptions::new().read(true).open(data_path).await?;
-    } else {
-        let data_path = file_path.replace(".index", ".snappy");
-        data_file = OpenOptions::new().read(true).open(data_path).await?;
-    }
+    let data_path = file_path.replace(".index", ".snappy");
+    let mut data_file = OpenOptions::new().read(true).open(data_path).await?;
 
     let data_mmap = unsafe { Mmap::map(&data_file)? };
 
@@ -190,31 +184,7 @@ async fn load_data(
 
     let read_data = &data_mmap[start_file_seek..end_file_seek];
 
-    let vec_u8 = if file_path.contains("log") {
-        let mut array_bytes_reader = ArrayBytesReader::new(read_data);
-        let mut compr_vec = Vec::<u8>::new();
-        loop {
-            if array_bytes_reader.is_stop() {
-                break;
-            }
-            let len = array_bytes_reader.read_i32();
-            let data = array_bytes_reader.read(len as usize);
-
-            let data_structure = bincode::deserialize::<DataStructure>(data)?;
-            let json_value = serde_json::to_string(&data_structure)?;
-            let mut encoder = Encoder::new();
-            let mut compressed_data = encoder.compress_vec(json_value.as_bytes())?;
-            let compressed_data_len = compressed_data.len() as i32;
-            compr_vec.append(compressed_data_len.to_be_bytes().to_vec().as_mut());
-            compr_vec.append(&mut compressed_data);
-        }
-
-        compr_vec
-    } else {
-        read_data.to_vec()
-    };
-
-    return Ok(vec_u8);
+    return Ok(read_data.to_vec());
 }
 
 struct ArrayBytesReader<'a> {

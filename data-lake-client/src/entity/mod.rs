@@ -1,8 +1,7 @@
 pub mod pub_function;
 
-use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
-use entity_lib::entity::MasterEntity::{BatchInsert, Create, MasterStreamRead, MesterInsert};
+use entity_lib::entity::MasterEntity::{BatchInsertTruth, Create, MasterStreamRead, MesterInsert};
 
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -13,5 +12,7 @@ pub enum ClientStatement {
     metadata(String),
     compress_table(String),
     stream_read(MasterStreamRead),
-    batch_insert(BatchInsert),
+    batch_insert(BatchInsertTruth),
 }
+
+

@@ -1,5 +1,6 @@
 use std::io::SeekFrom;
 use memmap2::MmapMut;
+use snap::raw::Encoder;
 use tokio::fs::OpenOptions;
 use tokio::io::{AsyncSeekExt, AsyncWriteExt};
 use entity_lib::entity::Error::DataLakeError;
@@ -69,7 +70,7 @@ pub async fn insert_operation(batch_insert: &SlaveInsert) -> Result<(), DataLake
 
 
                 let log_file_path = format!(
-                    "{}\\{}-{}\\{}\\{}.log",
+                    "{}\\{}-{}\\{}\\{}.snappy",
                     SLAVE_CONFIG.get("slave.data").unwrap(),
                     table_name,
                     partition_code,
@@ -129,7 +130,6 @@ pub async fn insert_operation(batch_insert: &SlaveInsert) -> Result<(), DataLake
         };
 
 
-        // let offset = i64::from_be_bytes((&metadata_mmap[..]).try_into().unwrap());
 
         let start_seek = data_file.seek(SeekFrom::End(0)).await?;
 
@@ -143,11 +143,14 @@ pub async fn insert_operation(batch_insert: &SlaveInsert) -> Result<(), DataLake
             offset: offset,
         };
 
-        let bincode_data = bincode::serialize(&data)?;
-        let data_len = bincode_data.len() as i32;
+        let json_value = serde_json::to_string(&data)?;
+        let mut encoder = Encoder::new();
+        let compressed_data = encoder.compress_vec(json_value.as_bytes())?;
+
+        let data_len = compressed_data.len() as i32;
 
         data_file.write_i32(data_len).await?;
-        data_file.write_all(&bincode_data).await?;
+        data_file.write_all(&compressed_data).await?;
 
         let end_seek = data_file.seek(SeekFrom::End(0)).await?;
 

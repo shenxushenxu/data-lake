@@ -62,6 +62,11 @@ pub struct SlaveInsert {
     pub partition_code: String,
 }
 
+#[derive(Serialize, Deserialize, Debug)]
+pub struct BatchInsertTruth {
+    pub table_name: String,
+    pub data: Vec<HashMap<String, String>>,
+}
 
 /**
 批量插入 的 struct
@@ -69,7 +74,7 @@ pub struct SlaveInsert {
 #[derive(Serialize, Deserialize, Debug)]
 pub struct BatchInsert{
     pub table_name: String,
-    pub data: Vec<HashMap<String, String>>,
+    pub data: Vec<u8>,
 }
 
 /**

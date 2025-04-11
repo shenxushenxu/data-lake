@@ -247,6 +247,7 @@ dependencies = [
  "public_function",
  "serde",
  "serde_json",
+ "snap",
  "tokio",
  "uuid",
 ]

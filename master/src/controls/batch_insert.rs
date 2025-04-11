@@ -2,14 +2,14 @@ use std::collections::HashMap;
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
 use entity_lib::entity::Error::DataLakeError;
-use entity_lib::entity::MasterEntity::{BatchInsert, DataType, SlaveBatchData, SlaveInsert, TableStructure};
+use entity_lib::entity::MasterEntity::{BatchInsert, BatchInsertTruth, DataType, SlaveBatchData, SlaveInsert, TableStructure};
 use entity_lib::entity::SlaveEntity::SlaveMessage;
 use public_function::hashcode;
 use crate::controls::insert;
 use crate::controls::insert::INSERT_TCPSTREAM_CACHE_POOL;
 use crate::controls::metadata::get_metadata;
 
-pub async fn batch_insert_data(mut batch_insert: BatchInsert, uuid:&String) -> Result<(), DataLakeError>{
+pub async fn batch_insert_data(mut batch_insert: BatchInsertTruth, uuid:&String) -> Result<(), DataLakeError>{
 
     let table_name = &batch_insert.table_name;
     let table_structure = get_metadata(&table_name).await?;
@@ -59,7 +59,7 @@ pub async fn batch_insert_data(mut batch_insert: BatchInsert, uuid:&String) -> R
 
 
 pub async fn batch_format_matching(
-    batch_insert: &mut BatchInsert,
+    batch_insert: &mut BatchInsertTruth,
     table_structure: &TableStructure,
     uuid: &String
 ) -> Result<HashMap<String, Vec<SlaveBatchData>>, DataLakeError> {

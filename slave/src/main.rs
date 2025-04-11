@@ -86,6 +86,7 @@ fn data_read_write() -> JoinHandle<()> {
                                     }
                                 }
                                 SlaveMessage::query(querymessage) => {
+
                                     let query_return = query(querymessage).await;
                                     match query_return {
                                         Ok(vec) => {

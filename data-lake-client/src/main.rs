@@ -2,9 +2,10 @@ mod controls;
 mod entity;
 use std::io::{Write};
 use std::{env, io};
+use snap::raw::Encoder;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
-use entity_lib::entity::MasterEntity::TableStructure;
+use entity_lib::entity::MasterEntity::{BatchInsert, Statement, TableStructure};
 use crate::controls::stream_read_logic::Consumer;
 use crate::entity::ClientStatement;
 
@@ -122,13 +123,32 @@ async fn main() {
                         println!("> {}", v);
                     }
                     io::stdout().flush().unwrap();
-                    // tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
                 }
 
             }
             ClientStatement::batch_insert(batch_insert) => {
-                stream.write_i32(bytes_len as i32).await.unwrap();
-                stream.write_all(bytes).await.unwrap();
+
+                let table_name = batch_insert.table_name;
+                let hash_data = batch_insert.data;
+
+                let data_str = serde_json::to_string(&hash_data).unwrap();
+
+                let mut encoder = Encoder::new();
+                let compressed_data = encoder.compress_vec(data_str.as_bytes()).unwrap();
+
+                let batchinsert = BatchInsert{
+                    table_name: table_name,
+                    data: compressed_data,
+                };
+
+                let state = Statement::batch_insert(batchinsert);
+
+                let write_data = serde_json::to_string(&state).unwrap();
+                let data_bytes = write_data.as_bytes();
+                let data_len = data_bytes.len();
+
+                stream.write_i32(data_len as i32).await.unwrap();
+                stream.write_all(data_bytes).await.unwrap();
 
                 entity::pub_function::read_error(&mut stream).await;
 

@@ -3,7 +3,9 @@ use entity_lib::entity::Error::DataLakeError;
 use entity_lib::entity::SlaveEntity::DataStructure;
 use snap::raw::Decoder;
 use std::collections::HashMap;
+use std::fmt::format;
 use std::io::SeekFrom;
+use std::path::Path;
 use memmap2::Mmap;
 use tokio::fs::{File, OpenOptions};
 use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
@@ -17,16 +19,20 @@ pub async fn data_duplicate_removal(file_vec: Vec<String>) -> Result<(HashMap<St
 
     let uuid = Uuid::new_v4().to_string();
     let temp_path = format!(
-        "{}\\{}\\{}",
+        "{}\\{}",
         SLAVE_CONFIG.get("slave.data").unwrap(),
-        "temp",
-        uuid
+        "temp"
     );
+    let path = Path::new(&temp_path);
+    if !path.exists() {
+        tokio::fs::create_dir(&temp_path).await?;
+    }
+
     let mut temp_file = OpenOptions::new()
         .read(true)
         .create(true)
         .append(true)
-        .open(temp_path)
+        .open(format!("{}\\{}",&temp_path, uuid))
         .await?;
 
     for file_path in file_vec.iter() {
@@ -39,17 +45,14 @@ pub async fn data_duplicate_removal(file_vec: Vec<String>) -> Result<(HashMap<St
 
                     file.read_exact(&mut message).await?;
 
-                    let data_structure = if file_path.contains(".snappy") {
-                        let mut decoder = Decoder::new();
-                        let message_bytes = decoder
-                            .decompress_vec(&message)
-                            .unwrap_or_else(|e| panic!("解压失败: {}", e));
-                        let message_str = std::str::from_utf8(&message_bytes)?;
 
-                        serde_json::from_str::<DataStructure>(message_str)?
-                    } else {
-                        bincode::deserialize::<DataStructure>(&message)?
-                    };
+                    let mut decoder = Decoder::new();
+                    let message_bytes = decoder
+                        .decompress_vec(&message)
+                        .unwrap_or_else(|e| panic!("解压失败: {}", e));
+
+                    let message_str = std::str::from_utf8(&message_bytes)?;
+                    let data_structure = serde_json::from_str::<DataStructure>(message_str)?;
 
                     let major_key = &data_structure.major_key;
                     let crud = &data_structure.crud;

@@ -1,7 +1,10 @@
 
 mod controls;
+
+use std::collections::HashMap;
 use log::{error, info};
 use serde_json::json;
+use snap::raw::Decoder;
 use public_function::{MASTER_CONFIG, hashcode, write_error};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
@@ -9,7 +12,7 @@ use tokio::sync::mpsc::Receiver;
 use tokio::task::JoinHandle;
 use uuid::Uuid;
 use entity_lib::entity::Error::DataLakeError;
-use entity_lib::entity::MasterEntity::Statement;
+use entity_lib::entity::MasterEntity::{BatchInsertTruth, Statement};
 use crate::controls::compress_table::{compress_table};
 use crate::controls::create::{create_table};
 use crate::controls::insert::{insert_data, INSERT_TCPSTREAM_CACHE_POOL};
@@ -118,7 +121,7 @@ fn data_interface() -> JoinHandle<()> {
                                 Statement::query(sql) => {
 
                                     let query_return = query_sql(sql).await;
-
+                                    println!("-----------    {:?}", query_return);
                                     match query_return {
                                         Ok(res_vec) => {
                                             if let Some(vec) = res_vec {
@@ -160,7 +163,23 @@ fn data_interface() -> JoinHandle<()> {
                                     }
                                 }
 
-                                Statement::batch_insert(batch) => {
+                                Statement::batch_insert(batch_insert) => {
+
+                                    let data = &batch_insert.data;
+                                    let table_name = batch_insert.table_name;
+
+                                    let mut decoder = Decoder::new();
+                                    let message_bytes = decoder
+                                        .decompress_vec(data)
+                                        .unwrap_or_else(|e| panic!("解压失败: {}", e));
+                                    let message_str = std::str::from_utf8(&message_bytes).unwrap();
+                                    let hashmap = serde_json::from_str::<Vec<HashMap<String, String>>>(message_str).unwrap();
+
+                                    let batch = BatchInsertTruth{
+                                        table_name: table_name,
+                                        data: hashmap
+                                    };
+
 
                                     let batch_return = controls::batch_insert::batch_insert_data(batch, &uuid).await;
 

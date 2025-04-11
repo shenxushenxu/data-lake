@@ -44,75 +44,7 @@ pub async fn compress_table(table_name: &String) -> Result<(), DataLakeError> {
     file_vec.remove(file_vec.len() - 1);
     file_vec.remove(file_vec.len() - 1);
 
-    // let mut res_map = HashMap::<String, DataStructure>::new();
-    //
-    // for file_value in file_vec.iter() {
-    //     let file_path = &file_value.1;
-    //
-    //     let mut file = OpenOptions::new().read(true).open(file_path).await?;
-    //
-    //     loop {
-    //         match file.read_i32().await {
-    //             Ok(message_len) => {
-    //                 let mut message = vec![0u8; message_len as usize];
-    //
-    //                 file.read_exact(&mut message).await?;
-    //
-    //                 let data_structure;
-    //
-    //                 if file_path.contains(".snappy") {
-    //                     let mut decoder = Decoder::new();
-    //                     let message_bytes = decoder
-    //                         .decompress_vec(&message)
-    //                         .unwrap_or_else(|e| panic!("解压失败: {}", e));
-    //
-    //                     let message_str = std::str::from_utf8(&message_bytes)?;
-    //                     data_structure = serde_json::from_str::<DataStructure>(message_str)?;
-    //                 } else {
-    //                     data_structure = bincode::deserialize::<DataStructure>(&message)?;
-    //                 }
-    //
-    //                 let major_key = &data_structure.major_key;
-    //                 let crud = &data_structure.crud;
-    //                 let offset = &data_structure.offset;
-    //
-    //                 match res_map.get(major_key) {
-    //                     Some(data) => match crud.as_str() {
-    //                         "insert" => {
-    //                             let map_data_offset = &data.offset;
-    //                             if offset > map_data_offset {
-    //                                 res_map.insert(major_key.clone(), data_structure);
-    //                             } else {
-    //                                 return Err(DataLakeError::CustomError("奶奶的，offset出毛病了".to_string()))
-    //                             }
-    //                         }
-    //                         "delete" => {
-    //                             res_map.remove(major_key);
-    //                         }
-    //                         _ => {
-    //                             return Err(DataLakeError::CustomError(format!("存在没有被定义的  crud 操作: {:?}", data_structure)))
-    //                         }
-    //                     },
-    //                     None => match crud.as_str() {
-    //                         "insert" => {
-    //                             res_map.insert(major_key.clone(), data_structure);
-    //                         }
-    //                         "delete" => {
-    //                             res_map.remove(major_key);
-    //                         }
-    //                         _ => {
-    //                             return Err(DataLakeError::CustomError(format!("存在没有被定义的  crud 操作: {:?}", data_structure)))
-    //                         }
-    //                     },
-    //                 }
-    //             }
-    //
-    //             Err(_) => {
-    //                 break;
-    //             }
-    //         }
-    //     }
-    // }
+
 
     let f_v = file_vec
         .iter()
