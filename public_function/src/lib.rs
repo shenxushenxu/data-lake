@@ -1,4 +1,5 @@
 pub mod read_function;
+pub mod tcp_encapsulation;
 
 use std::collections::HashMap;
 use std::sync::LazyLock;

@@ -1,13 +1,15 @@
 
 mod controls;
+mod master_operation;
 
+use std::any::Any;
 use std::collections::HashMap;
 use log::{error, info};
 use serde_json::json;
 use snap::raw::Decoder;
 use public_function::{MASTER_CONFIG, hashcode, write_error};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::net::TcpListener;
+use tokio::net::{TcpListener};
 use tokio::sync::mpsc::Receiver;
 use tokio::task::JoinHandle;
 use uuid::Uuid;
@@ -19,6 +21,7 @@ use crate::controls::insert::{insert_data, INSERT_TCPSTREAM_CACHE_POOL};
 use crate::controls::metadata::{get_metadata};
 use crate::controls::query::{query_sql};
 use crate::controls::stream_read::{stream_read_data, STREAM_TCP};
+use crate::master_operation::tcp_encapsulation::TcpStream;
 
 /**
 -1 是停止
@@ -29,9 +32,9 @@ async fn main() {
     // 初始化日志系统
     env_logger::init();
 
-    let cc = data_interface();
+    let master_main = data_interface();
 
-    tokio::join!(cc);
+    tokio::join!(master_main);
 }
 
 /**
@@ -46,14 +49,19 @@ fn data_interface() -> JoinHandle<()> {
         loop {
             let (mut socket, _) = listener.accept().await.unwrap();
 
+            let mut tcp_stream = TcpStream::new(socket);
+
+
             tokio::spawn(async move {
                 let uuid = Uuid::new_v4().to_string();
 
-                let (mut read, mut write) = socket.split();
+                let (mut read, mut write) = tcp_stream.split();
 
                 loop {
                     match read.read_i32().await {
                         Ok(message_len) => {
+
+
 
                             let mut message = vec![0; message_len as usize];
 
@@ -199,33 +207,7 @@ fn data_interface() -> JoinHandle<()> {
 
                         Err(e) => {
                             info!("{:?}", e);
-                            // 输入插入连接断开，清理缓存中的连接
-                            let mut remove_vec = Vec::<String>::new();
-                            let mut mutex_guard = INSERT_TCPSTREAM_CACHE_POOL.lock().await;
 
-                            mutex_guard.keys().for_each(|k| {
-                                if k.contains(uuid.as_str()) {
-                                    remove_vec.push(k.clone());
-                                }
-                            });
-
-                            remove_vec.iter().for_each(|k| {
-                                mutex_guard.remove(k).unwrap();
-                            });
-
-                            // ----------  流消费连接断开，清理缓存中的连接
-                            let mut remove_vec = Vec::<String>::new();
-                            let mut mutex_guard = STREAM_TCP.lock().await;
-
-                            mutex_guard.keys().for_each(|k| {
-                                if k.contains(uuid.as_str()) {
-                                    remove_vec.push(k.clone());
-                                }
-                            });
-
-                            remove_vec.iter().for_each(|k| {
-                                mutex_guard.remove(k).unwrap();
-                            });
 
                             break;
                         }
