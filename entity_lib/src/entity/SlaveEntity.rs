@@ -67,7 +67,7 @@ pub struct DataStructure {
     pub table_name: String,
     pub major_key: String,
     pub data: String,
-    pub crud: String,
+    pub _crud_type: String,
     pub partition_code: String,
     pub offset: i64
 }

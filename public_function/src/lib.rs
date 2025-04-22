@@ -1,12 +1,15 @@
 pub mod read_function;
-pub mod tcp_encapsulation;
+pub mod string_trait;
 
 use std::collections::HashMap;
 use std::sync::LazyLock;
+use memmap2::Mmap;
+use tokio::fs::OpenOptions;
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt};
 use tokio::net::tcp::{ReadHalf, WriteHalf};
 use tokio::net::TcpStream;
 use entity_lib::entity::Error::DataLakeError;
+use entity_lib::entity::MasterEntity::TableStructure;
 
 pub static MASTER_CONFIG: LazyLock<HashMap<String,String>> = LazyLock::new(|| {
     let file_path = r"D:\rustproject\data-lake\config\master_config.properties";
@@ -49,37 +52,6 @@ fn load_properties(file_path:&str) -> HashMap<String, String> {
 
 
 
-pub trait hashcode{
-    fn hash_code(&self) -> i32;
-}
-
-impl hashcode for &str{
-    fn hash_code(&self) -> i32 {
-        let mut hash = 0i32;  // 哈希值初始化为 0
-        let multiplier = 31;   // Java 中常用的乘数 31
-
-        // 遍历字符串中的每个字符
-        for c in self.chars() {
-            // 将字符转为其 Unicode 值
-            let char_value = c as i32;
-            // 更新哈希值
-            hash = hash.wrapping_mul(multiplier).wrapping_add(char_value);
-        }
-        return hash;
-    }
-}
-
-impl hashcode for String{
-    fn hash_code(&self) -> i32 {
-        let mut hash = 0i32;
-        let multiplier = 31;
-        for c in self.chars() {
-            let char_value = c as i32;
-            hash = hash.wrapping_mul(multiplier).wrapping_add(char_value);
-        }
-        return hash;
-    }
-}
 
 
 
@@ -148,6 +120,9 @@ pub async fn read_error(stream: &mut TcpStream) -> Result<(),DataLakeError>{
 
     return Ok(());
 }
+
+
+
 
 
 

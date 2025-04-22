@@ -1,6 +1,6 @@
 
 [workspace]
-members = [ "data-lake-client", "entity_lib","master", "public_function", "slave"]
+members = [ "daql_analysis", "data-lake-client", "entity_lib","master", "public_function", "slave"]
 
 [workspace.dependencies]
 tokio = { version = "1.43.0", features = ["full"] }
@@ -12,3 +12,4 @@ uuid = { version = "1.14.0", features = ["v4"] }
 snap = "1.1.1"
 log = "0.4.26"
 env_logger = "0.11.6"
+sqlparser = "0.55.0"

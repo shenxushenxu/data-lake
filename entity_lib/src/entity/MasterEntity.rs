@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum DataType {
     string,
     int,
@@ -9,6 +9,15 @@ pub enum DataType {
     boolean,
     long,
 }
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub enum ColumnConfigJudgment {
+    PRIMARY_KEY,
+    NOT_NULL,
+    DEFAULT,
+    NOT
+}
+
 
 /*
 create 语句的 struct 类
@@ -29,7 +38,7 @@ pub struct Create {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct MesterInsert{
     pub table_name: String,
-    pub crud: String,
+    pub _crud_type: String,
     pub data: HashMap<String, String>,
 
 }
@@ -43,7 +52,7 @@ pub struct Insert {
     pub table_name: String,
     pub major_key: String,
     pub data: String,
-    pub crud: String,
+    pub _crud_type: String,
     pub address: String,
     pub partition_code: String,
 }
@@ -53,7 +62,7 @@ pub struct Insert {
 pub struct SlaveBatchData{
     pub major_key: String,
     pub data: String,
-    pub crud: String,
+    pub _crud_type: String,
 }
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct SlaveInsert {
@@ -82,11 +91,11 @@ pub struct BatchInsert{
 **/
 #[derive(Serialize, Deserialize, Debug)]
 pub enum Statement {
-    create(Create),
-    query(String),
-    insert(MesterInsert),
-    metadata(String),
-    compress_table(String),
+    // create(Create),
+    // insert(MesterInsert),
+    // metadata(String),
+    // compress_table(String),
+    sql(String),
     stream_read(MasterStreamRead),
     batch_insert(BatchInsert)
 }
@@ -109,12 +118,12 @@ pub struct Parti {
 /**
 表结构的 struct
 **/
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct TableStructure {
     // 表名
     pub table_name: String,
     // 表的列名和对应的类型
-    pub col_type: HashMap<String, DataType>,
+    pub col_type: HashMap::<String, (DataType, ColumnConfigJudgment, Option<String>)>,
     // 分区编号对应的slave 地址
     pub partition_address: HashMap<usize, String>,
     // 分区个数

@@ -16,3 +16,4 @@ snap = {workspace = true}
 
 entity_lib = {path = "../entity_lib"}
 public_function = {path = "../public_function"}
+daql_analysis = {path = "../daql_analysis"}

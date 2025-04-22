@@ -1,27 +1,27 @@
-
 mod controls;
-mod master_operation;
 
-use std::any::Any;
-use std::collections::HashMap;
+use crate::controls::compress_table::compress_table;
+use crate::controls::create::create_table;
+use crate::controls::metadata::get_metadata;
+use crate::controls::query::query_daql;
+use crate::controls::stream_read::{stream_read_data, STREAM_TCP_TABLESTRUCTURE};
+use daql_analysis::daql_analysis_function;
+use entity_lib::entity::DaqlEntity::DaqlType;
+use entity_lib::entity::Error::DataLakeError;
+use entity_lib::entity::MasterEntity::{BatchInsertTruth, Statement};
 use log::{error, info};
+use public_function::{MASTER_CONFIG, write_error};
 use serde_json::json;
 use snap::raw::Decoder;
-use public_function::{MASTER_CONFIG, hashcode, write_error};
+use std::any::Any;
+use std::collections::HashMap;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::net::{TcpListener};
+use tokio::net::TcpListener;
 use tokio::sync::mpsc::Receiver;
 use tokio::task::JoinHandle;
 use uuid::Uuid;
-use entity_lib::entity::Error::DataLakeError;
-use entity_lib::entity::MasterEntity::{BatchInsertTruth, Statement};
-use crate::controls::compress_table::{compress_table};
-use crate::controls::create::{create_table};
-use crate::controls::insert::{insert_data, INSERT_TCPSTREAM_CACHE_POOL};
-use crate::controls::metadata::{get_metadata};
-use crate::controls::query::{query_sql};
-use crate::controls::stream_read::{stream_read_data, STREAM_TCP};
-use crate::master_operation::tcp_encapsulation::TcpStream;
+use crate::controls::alter::{alter_add, alter_orop};
+use crate::controls::batch_insert::INSERT_TCPSTREAM_CACHE_POOL;
 
 /**
 -1 是停止
@@ -47,9 +47,7 @@ fn data_interface() -> JoinHandle<()> {
             .unwrap();
 
         loop {
-            let (mut socket, _) = listener.accept().await.unwrap();
-
-            let mut tcp_stream = TcpStream::new(socket);
+            let (mut tcp_stream, _) = listener.accept().await.unwrap();
 
 
             tokio::spawn(async move {
@@ -60,106 +58,118 @@ fn data_interface() -> JoinHandle<()> {
                 loop {
                     match read.read_i32().await {
                         Ok(message_len) => {
-
-
-
                             let mut message = vec![0; message_len as usize];
 
                             read.read_exact(message.as_mut_slice()).await.unwrap();
 
                             let message_str = String::from_utf8(message).unwrap();
 
-                            let statement: Statement = serde_json::from_str(&message_str[..]).unwrap();
+                            let statement: Statement = serde_json::from_str(&message_str).unwrap();
 
                             match statement {
-                                Statement::create(create_struct) => {
-                                    let create_return = create_table(create_struct).await;
+                                Statement::sql(daql) => {
+                                    match daql_analysis_function(&daql).await {
+                                        Ok(daqltype) => match daqltype {
+                                            DaqlType::CREATE_TABLE(tablestructure) => {
 
-                                    match create_return {
-                                        Ok(_) => {
-                                            write.write_i32(-1).await.unwrap();
-                                        }
-                                        Err(e) => {
-                                            public_function::write_error(e, &mut write).await;
-                                        }
-                                    }
-                                }
-                                Statement::insert(insert) => {
-                                    let insert_return = insert_data(insert, &uuid).await;
-                                    match insert_return {
-                                        Ok(_) => {
-                                            write.write_i32(-1).await.unwrap();
-                                        }
-                                        Err(e) => {
-                                            public_function::write_error(e, &mut write).await;
-                                        }
-                                    };
-                                }
-                                Statement::metadata(table_name) => {
-                                    let metadata_return = get_metadata(&table_name).await;
-                                    match metadata_return {
-                                        Ok(table_structure) => {
-                                            let metadtat_message = serde_json::to_string(&table_structure).unwrap();
-                                            let byt = metadtat_message.as_bytes();
-
-                                            let write_len = byt.len();
-                                            let write_message = byt;
-
-                                            write.write_i32(write_len as i32).await.unwrap();
-                                            write.write_all(write_message).await.unwrap();
-                                        }
-                                       Err(e) => {
-                                           public_function::write_error(e, &mut write).await;
-                                       }
-                                    }
-                                }
-                                Statement::compress_table(table_name) => {
-                                    let compress_return = compress_table(&table_name).await;
-
-                                    match compress_return {
-                                        Ok(_) => {
-                                            write.write_i32(-1).await.unwrap();
-                                        }
-                                        Err(e) => {
-                                            public_function::write_error(e, &mut write).await;
-                                        }
-                                    }
-
-                                }
-                                Statement::query(sql) => {
-
-                                    let query_return = query_sql(sql).await;
-                                    println!("-----------    {:?}", query_return);
-                                    match query_return {
-                                        Ok(res_vec) => {
-                                            if let Some(vec) = res_vec {
-                                                for ve in vec {
-                                                    let byt = ve.as_bytes();
-                                                    let write_len = byt.len();
-                                                    write.write_i32(write_len as i32).await.unwrap();
-                                                    write.write_all(byt).await.unwrap();
+                                                match create_table(tablestructure).await {
+                                                    Ok(_) => {
+                                                        write.write_i32(-1).await.unwrap();
+                                                    }
+                                                    Err(e) => {
+                                                        public_function::write_error(e, &mut write)
+                                                            .await;
+                                                    }
                                                 }
                                             }
-                                                write.write_i32(-1).await.unwrap();
+                                            DaqlType::SELECT_TABLE(querymessage) => {
+                                                match query_daql(querymessage).await {
+                                                    Ok(option_vec) => {
+                                                        if let Some(vec) = option_vec {
+                                                            for ve in vec {
+                                                                let byt = ve.as_bytes();
+                                                                let write_len = byt.len();
+                                                                write
+                                                                    .write_i32(write_len as i32)
+                                                                    .await
+                                                                    .unwrap();
+                                                                write.write_all(byt).await.unwrap();
+                                                            }
+                                                        }
+                                                        write.write_i32(-1).await.unwrap();
+                                                    }
+                                                    Err(e) => {
+                                                        public_function::write_error(e, &mut write).await;
+                                                    }
+                                                }
+                                            }
+                                            DaqlType::ALTER_OROP(alterorop) => {
+                                                match alter_orop(alterorop).await{
+                                                    Ok(_) => {
+                                                        write.write_i32(-1).await.unwrap();
+                                                    }
+                                                    Err(e) => {
+                                                        public_function::write_error(e, &mut write).await;
+                                                    }
+                                                }
+                                            }
+                                            DaqlType::ALTER_ADD(alteradd) => {
+                                                match alter_add(alteradd).await {
+                                                    Ok(_) => {
+                                                        write.write_i32(-1).await.unwrap();
+                                                    }
+                                                    Err(e) => {
+                                                        public_function::write_error(e, &mut write).await;
+                                                    }
+                                                }
+                                            }
+                                            DaqlType::SHOW_TABLE(table_name) => {
+                                                let metadata_return = get_metadata(&table_name).await;
+                                                match metadata_return {
+                                                    Ok(table_structure) => {
+                                                        let metadtat_message = serde_json::to_string(&table_structure).unwrap();
+                                                        let byt = metadtat_message.as_bytes();
 
-                                        }
+                                                        let write_len = byt.len();
+                                                        let write_message = byt;
+
+                                                        write.write_i32(write_len as i32).await.unwrap();
+                                                        write.write_all(write_message).await.unwrap();
+                                                        write.write_i32(-1).await.unwrap();
+                                                    }
+                                                    Err(e) => {
+                                                        public_function::write_error(e, &mut write).await;
+                                                    }
+                                                }
+                                            }
+                                            DaqlType::COMPRESS_TABLE(table_name) => {
+                                                let compress_return = compress_table(&table_name).await;
+
+                                                match compress_return {
+                                                    Ok(_) => {
+                                                        write.write_i32(-1).await.unwrap();
+                                                    }
+                                                    Err(e) => {
+                                                        public_function::write_error(e, &mut write).await;
+                                                    }
+                                                }
+                                            }
+                                        },
                                         Err(e) => {
                                             public_function::write_error(e, &mut write).await;
                                         }
                                     }
-
-
 
                                 }
                                 Statement::stream_read(stream_read) => {
-
-
                                     let stream_return = stream_read_data(stream_read, &uuid).await;
 
                                     match stream_return {
                                         Ok(mut receiver) => {
                                             while let Some(message) = receiver.recv().await {
                                                 if let Some(message_bytes) = message {
+
+                                                    write.write_i32(message_bytes.len() as i32).await.unwrap();
                                                     write.write_all(&message_bytes).await.unwrap();
                                                 }
                                             }
@@ -172,7 +182,6 @@ fn data_interface() -> JoinHandle<()> {
                                 }
 
                                 Statement::batch_insert(batch_insert) => {
-
                                     let data = &batch_insert.data;
                                     let table_name = batch_insert.table_name;
 
@@ -181,15 +190,19 @@ fn data_interface() -> JoinHandle<()> {
                                         .decompress_vec(data)
                                         .unwrap_or_else(|e| panic!("解压失败: {}", e));
                                     let message_str = std::str::from_utf8(&message_bytes).unwrap();
-                                    let hashmap = serde_json::from_str::<Vec<HashMap<String, String>>>(message_str).unwrap();
+                                    let hashmap = serde_json::from_str::<
+                                        Vec<HashMap<String, String>>,
+                                    >(message_str)
+                                    .unwrap();
 
-                                    let batch = BatchInsertTruth{
+                                    let batch = BatchInsertTruth {
                                         table_name: table_name,
-                                        data: hashmap
+                                        data: hashmap,
                                     };
 
-
-                                    let batch_return = controls::batch_insert::batch_insert_data(batch, &uuid).await;
+                                    let batch_return =
+                                        controls::batch_insert::batch_insert_data(batch, &uuid)
+                                            .await;
 
                                     match batch_return {
                                         Ok(_) => {
@@ -199,16 +212,39 @@ fn data_interface() -> JoinHandle<()> {
                                             public_function::write_error(e, &mut write).await;
                                         }
                                     }
-
                                 }
-
                             }
                         }
 
                         Err(e) => {
                             info!("{:?}", e);
+                            // 输入插入连接断开，清理缓存中的连接
+                            let mut remove_vec = Vec::<String>::new();
+                            let mut mutex_guard = INSERT_TCPSTREAM_CACHE_POOL.lock().await;
 
+                            mutex_guard.keys().for_each(|k| {
+                                if k.contains(uuid.as_str()) {
+                                    remove_vec.push(k.clone());
+                                }
+                            });
 
+                            remove_vec.iter().for_each(|k| {
+                                mutex_guard.remove(k).unwrap();
+                            });
+
+                            // ----------  流消费连接断开，清理缓存中的连接
+                            let mut remove_vec = Vec::<String>::new();
+                            let mut mutex_guard = STREAM_TCP_TABLESTRUCTURE.lock().await;
+
+                            mutex_guard.keys().for_each(|k| {
+                                if k.contains(uuid.as_str()) {
+                                    remove_vec.push(k.clone());
+                                }
+                            });
+
+                            remove_vec.iter().for_each(|k| {
+                                mutex_guard.remove(k).unwrap();
+                            });
                             break;
                         }
                     }

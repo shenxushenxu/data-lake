@@ -1,6 +1,7 @@
 pub mod MasterEntity;
 pub mod SlaveEntity;
 pub mod Error;
+pub mod DaqlEntity;
 
 use serde::{Deserialize, Serialize};
 use crate::entity::MasterEntity::Statement;

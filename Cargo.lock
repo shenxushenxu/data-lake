@@ -131,6 +131,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5b63caa9aa9397e2d9480a9b13673856c78d8ac123288526c37d7839f2a86990"
 
 [[package]]
+name = "daql_analysis"
+version = "0.1.0"
+dependencies = [
+ "entity_lib",
+ "public_function",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "data-lake-client"
 version = "0.1.0"
 dependencies = [
@@ -240,6 +251,7 @@ name = "master"
 version = "0.1.0"
 dependencies = [
  "bincode",
+ "daql_analysis",
  "entity_lib",
  "env_logger",
  "log",

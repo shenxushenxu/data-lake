@@ -1,8 +1,7 @@
 use entity_lib::entity::Error::DataLakeError;
-use entity_lib::entity::SlaveEntity::{DataStructure, IndexStruct, StreamReadStruct};
+use entity_lib::entity::SlaveEntity::{IndexStruct, StreamReadStruct};
 use memmap2::Mmap;
 use public_function::SLAVE_CONFIG;
-use snap::raw::Encoder;
 use std::mem;
 use tokio::fs::OpenOptions;
 
@@ -43,8 +42,7 @@ pub async fn stream_read(
                 return true;
             }
             return false;
-        })
-        .collect::<Vec<&(String, String)>>();
+        }).collect::<Vec<&(String, String)>>();
 
     file_vec.sort_by_key(|x1| {
         let file_name = &x1.0;
@@ -93,8 +91,6 @@ async fn binary_search<'a>(file_vec: &'a Vec<&(String, String)>, offset: i64) ->
             return Ok(Some(this_index_path));
         }
     }
-
-    // let index_path = &file_vec.last().unwrap().1;
 
     return Ok(None);
 }
@@ -185,47 +181,4 @@ async fn load_data(
     let read_data = &data_mmap[start_file_seek..end_file_seek];
 
     return Ok(read_data.to_vec());
-}
-
-struct ArrayBytesReader<'a> {
-    data: &'a [u8],
-    array_pointer: usize,
-}
-impl<'a> ArrayBytesReader<'a> {
-    pub fn new(data: &'a [u8]) -> Self {
-        return ArrayBytesReader {
-            data: data,
-            array_pointer: 0,
-        };
-    }
-
-    pub fn read_i32(&mut self) -> i32 {
-        let size = size_of::<i32>();
-
-        let len = i32::from_be_bytes(
-            self.data[self.array_pointer..self.array_pointer + size]
-                .try_into()
-                .unwrap(),
-        );
-
-        self.array_pointer += size;
-
-        return len;
-    }
-
-    pub fn read(&mut self, len: usize) -> &'a [u8] {
-        let uuu = &self.data[self.array_pointer..self.array_pointer + len];
-
-        self.array_pointer += len;
-
-        return uuu;
-    }
-
-    pub fn is_stop(&self) -> bool {
-        if self.array_pointer == self.data.len() {
-            return true;
-        } else {
-            return false;
-        }
-    }
 }

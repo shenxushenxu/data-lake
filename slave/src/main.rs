@@ -1,7 +1,5 @@
 
 mod controls;
-mod slave_operation;
-
 use entity_lib::entity::MasterEntity::QueryItem;
 use entity_lib::entity::SlaveEntity::{QueryMessage, SlaveMessage};
 use log::{error, info};
@@ -15,7 +13,6 @@ use crate::controls::create_table::create_table_controls;
 use crate::controls::insert_data::insert_operation;
 use crate::controls::query_table::query;
 use crate::controls::stream_read::stream_read;
-use crate::slave_operation::tcp_encapsulation::TcpStream;
 
 #[tokio::main]
 async fn main() {
@@ -37,9 +34,8 @@ fn data_read_write() -> JoinHandle<()> {
             .unwrap();
 
         loop {
-            let (mut socket, _) = listener.accept().await.unwrap();
+            let (mut tcp_stream, _) = listener.accept().await.unwrap();
 
-            let mut tcp_stream = TcpStream::new(socket);
 
             tokio::spawn(async move {
                 let (mut read, mut write) = tcp_stream.split();

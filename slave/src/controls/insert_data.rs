@@ -23,7 +23,7 @@ pub async fn insert_operation(insert: Insert) -> Result<(), DataLakeError>{
 
     let table_name = insert.table_name;
     let partition_code = insert.partition_code;
-    let crud = insert.crud;
+    let crud_type = insert._crud_type;
     let data = insert.data;
     let major_key = insert.major_key;
 
@@ -121,7 +121,7 @@ pub async fn insert_operation(insert: Insert) -> Result<(), DataLakeError>{
         table_name: table_name,
         major_key: major_key,
         data: data,
-        crud: crud,
+        _crud_type: crud_type,
         partition_code: partition_code,
         offset: offset,
     };

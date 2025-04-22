@@ -69,15 +69,17 @@ cargo run --release -- masterip:masterprot
 # 开发者接口示例
 
 ## 创建表：
-{"create":{"table_name":"test_table","col_type":{"col_id":"long","col_name":"string","col_age":"int","shengao":"long","xingbie":"boolean"},"partition_number":4,"major_key":"col_id"}}
-## 插入数据：(根据crud的不同来选择insert或者delete，目前只支持这两种选项)
-{"insert":{"crud":"insert","data":{"shengao":"32","col_age":"12","xingbie":"true","col_id":"99","col_name":"anjilinazhuli"},"table_name":"test_table"}}
-
+{"sql":"create table table_name(id INT PRIMARY KEY, username string NOT NULL, age long, xingbie string default '男') partition_number = 4"}
 ## 批量插入数据：
-<br>{"batch_insert":{"data":[{"shengao":"32","crud":"insert","col_age":"10","xingbie":"true","col_id":"0","col_name":"anjilinazhuli"},{"shengao":"32","crud":"insert","col_age":"11","xingbie":"true","col_id":"1","col_name":"anjilinazhuli"},{"shengao":"32","crud":"insert","col_age":"12","xingbie":"true","col_id":"2","col_name":"anjilinazhuli"},{"shengao":"32","crud":"insert","col_age":"13","xingbie":"true","col_id":"3","col_name":"anjilinazhuli"},{"shengao":"32","crud":"insert","col_age":"14","xingbie":"true","col_id":"4","col_name":"anjilinazhuli"},{"shengao":"32","crud":"insert","col_age":"15","xingbie":"true","col_id":"5","col_name":"anjilinazhuli"},{"shengao":"32","crud":"insert","col_age":"16","xingbie":"true","col_id":"6","col_name":"anjilinazhuli"},{"shengao":"32","crud":"insert","col_age":"17","xingbie":"true","col_id":"7","col_name":"anjilinazhuli"},{"shengao":"32","crud":"insert","col_age":"18","xingbie":"true","col_id":"8","col_name":"anjilinazhuli"},{"shengao":"32","crud":"insert","col_age":"19","xingbie":"true","col_id":"9","col_name":"anjilinazhuli"}],"table_name":"test_table"}}
-
+<br>{"batch_insert":{"data":[{"shengao":"32","_crud_type":"insert","col_age":"10","xingbie":"true","col_id":"0","col_name":"anjilinazhuli"},{"shengao":"32","_crud_type":"insert","col_age":"11","xingbie":"true","col_id":"1","col_name":"anjilinazhuli"},{"shengao":"32","_crud_type":"insert","col_age":"12","xingbie":"true","col_id":"2","col_name":"anjilinazhuli"},{"shengao":"32","_crud_type":"insert","col_age":"13","xingbie":"true","col_id":"3","col_name":"anjilinazhuli"},{"shengao":"32","_crud_type":"insert","col_age":"14","xingbie":"true","col_id":"4","col_name":"anjilinazhuli"},{"shengao":"32","_crud_type":"insert","col_age":"15","xingbie":"true","col_id":"5","col_name":"anjilinazhuli"},{"shengao":"32","_crud_type":"insert","col_age":"16","xingbie":"true","col_id":"6","col_name":"anjilinazhuli"},{"shengao":"32","_crud_type":"insert","col_age":"17","xingbie":"true","col_id":"7","col_name":"anjilinazhuli"},{"shengao":"32","_crud_type":"insert","col_age":"18","xingbie":"true","col_id":"8","col_name":"anjilinazhuli"},{"shengao":"32","_crud_type":"insert","col_age":"19","xingbie":"true","col_id":"9","col_name":"anjilinazhuli"}],"table_name":"test_table"}}
 ## 查询表内的数据：
-<br>{"query": "select col_id,col_name,col_age,shengao,xingbie from test_table"}
+<br>{"sql":"select username, age from table_name"}
+## 添加列
+<br>{"sql":"ALTER TABLE table_name ADD username_a string"}
+## 删除列
+<br>{"sql":"ALTER TABLE table_name OROP username_a"}
+## 查看表的元数据
+<br> {"sql":"show table_name"}
 ## 消费表内的数据：
 ### 从头开始消费：
 {"stream_read":{"patition_mess":[],"table_name":"test_table","read_count":1000}}
@@ -87,13 +89,13 @@ cargo run --release -- masterip:masterprot
 
 # 高级功能
 ## 对表根据主键唯一id进行压缩去重：（会留下最新的两个snappy文件）
-<br>{"compress_table":"test_table"}
+<br>{"sql":"compress table_name"}
 
 
 
 # 持续开发中
-1. 实现标准SQL查询接口支持
-2. 引入磁盘缓存机制优化批量查询资源利用率
+1. 实现标准SQL查询接口支持(开发中.....)
+2. 引入磁盘缓存机制优化批量查询资源利用率(完成)
 3. 构建完善的异常处理与错误日志系统
 4. 集成Snappy压缩算法降低网络传输带宽占用（完成）
 5. 开发实时集群状态可视化监控仪表盘

@@ -31,7 +31,7 @@ pub async fn insert_operation(batch_insert: &SlaveInsert) -> Result<(), DataLake
     for insert in batch_insert.iter() {
 
 
-        let crud = &insert.crud;
+        let crud_type = &insert._crud_type;
         let data = &insert.data;
         let major_key = &insert.major_key;
 
@@ -138,7 +138,7 @@ pub async fn insert_operation(batch_insert: &SlaveInsert) -> Result<(), DataLake
             table_name: table_name.clone(),
             major_key: major_key.clone(),
             data: data.clone(),
-            crud: crud.clone(),
+            _crud_type: crud_type.clone(),
             partition_code: partition_code.clone(),
             offset: offset,
         };

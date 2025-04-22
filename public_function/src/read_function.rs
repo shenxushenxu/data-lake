@@ -3,7 +3,6 @@ use entity_lib::entity::Error::DataLakeError;
 use entity_lib::entity::SlaveEntity::DataStructure;
 use snap::raw::Decoder;
 use std::collections::HashMap;
-use std::fmt::format;
 use std::io::SeekFrom;
 use std::path::Path;
 use memmap2::Mmap;
@@ -55,11 +54,11 @@ pub async fn data_duplicate_removal(file_vec: Vec<String>) -> Result<(HashMap<St
                     let data_structure = serde_json::from_str::<DataStructure>(message_str)?;
 
                     let major_key = &data_structure.major_key;
-                    let crud = &data_structure.crud;
+                    let crud_type = &data_structure._crud_type;
                     let offset = &data_structure.offset;
 
                     match res_map.get(major_key) {
-                        Some((position, len)) => match crud.as_str() {
+                        Some((position, len)) => match crud_type.as_str() {
                             "insert" => {
 
                                 let temp_mmap = unsafe {Mmap::map(&temp_file)}?;
@@ -93,7 +92,7 @@ pub async fn data_duplicate_removal(file_vec: Vec<String>) -> Result<(HashMap<St
                                 )));
                             }
                         },
-                        None => match crud.as_str() {
+                        None => match crud_type.as_str() {
                             "insert" => {
 
                                 let data_position = temp_file.seek(SeekFrom::End(0)).await?;
@@ -124,4 +123,52 @@ pub async fn data_duplicate_removal(file_vec: Vec<String>) -> Result<(HashMap<St
     }
 
     return Ok((res_map, temp_file));
+}
+
+
+
+
+
+
+pub struct ArrayBytesReader<'a> {
+    data: &'a [u8],
+    array_pointer: usize,
+}
+impl<'a> ArrayBytesReader<'a> {
+    pub fn new(data: &'a [u8]) -> Self {
+        return ArrayBytesReader {
+            data: data,
+            array_pointer: 0,
+        };
+    }
+
+    pub fn read_i32(&mut self) -> i32 {
+        let size = size_of::<i32>();
+
+        let len = i32::from_be_bytes(
+            self.data[self.array_pointer..self.array_pointer + size]
+                .try_into()
+                .unwrap(),
+        );
+
+        self.array_pointer += size;
+
+        return len;
+    }
+
+    pub fn read_exact(&mut self, len: usize) -> &'a [u8] {
+        let uuu = &self.data[self.array_pointer..self.array_pointer + len];
+
+        self.array_pointer += len;
+
+        return uuu;
+    }
+
+    pub fn is_stop(&self) -> bool {
+        if self.array_pointer == self.data.len() {
+            return true;
+        } else {
+            return false;
+        }
+    }
 }

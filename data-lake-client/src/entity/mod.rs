@@ -6,11 +6,11 @@ use entity_lib::entity::MasterEntity::{BatchInsertTruth, Create, MasterStreamRea
 
 #[derive(Serialize, Deserialize, Debug)]
 pub enum ClientStatement {
-    create(Create),
-    query(String),
-    insert(MesterInsert),
-    metadata(String),
-    compress_table(String),
+    // create(Create),
+    // insert(MesterInsert),
+    // metadata(String),
+    // compress_table(String),
+    sql(String),
     stream_read(MasterStreamRead),
     batch_insert(BatchInsertTruth),
 }

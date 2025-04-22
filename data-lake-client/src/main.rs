@@ -41,50 +41,7 @@ async fn main() {
         let bytes_len = bytes.len();
 
         match client_statement {
-            ClientStatement::create(create_struct) => {
-                stream.write_i32(bytes_len as i32).await.unwrap();
-                stream.write_all(bytes).await.unwrap();
-
-                entity::pub_function::read_error(&mut stream).await;
-            }
-            ClientStatement::insert(master_insert) => {
-
-                stream.write_i32(bytes_len as i32).await.unwrap();
-                stream.write_all(bytes).await.unwrap();
-
-                entity::pub_function::read_error(&mut stream).await;
-
-            }
-            ClientStatement::metadata(table_name) => {
-                stream.write_i32(bytes_len as i32).await.unwrap();
-                stream.write_all(bytes).await.unwrap();
-
-                if let Ok(len) = stream.read_i32().await {
-
-                    if len == -2 {
-
-                        entity::pub_function::read_error(&mut stream).await;
-
-                    }else {
-                        let mut return_mess = vec![0u8; len as usize];
-                        stream.read(return_mess.as_mut_slice()).await.unwrap();
-
-                        let table_structure: TableStructure =
-                            serde_json::from_str(std::str::from_utf8(return_mess.as_slice()).unwrap()).unwrap();
-                        let json_str = serde_json::to_string(&table_structure).unwrap();
-                        println!("{}", json_str);
-                        io::stdout().flush().unwrap();
-                    }
-                }
-            }
-            ClientStatement::compress_table(table_name) => {
-                stream.write_i32(bytes_len as i32).await.unwrap();
-                stream.write_all(bytes).await.unwrap();
-
-                entity::pub_function::read_error(&mut stream).await;
-
-            }
-            ClientStatement::query(sql) => {
+            ClientStatement::sql(sql) => {
                 stream.write_i32(bytes_len as i32).await.unwrap();
                 stream.write_all(bytes).await.unwrap();
 
