@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use tokio::fs::OpenOptions;
 use tokio::io::AsyncReadExt;
 
-pub async fn query(querymessage: QueryMessage) -> Result<Option<Vec<String>>, DataLakeError> {
+pub async fn query(querymessage: QueryMessage, uuid:&String) -> Result<Option<Vec<String>>, DataLakeError> {
 
 
     let log_path = format!(
@@ -42,7 +42,7 @@ pub async fn query(querymessage: QueryMessage) -> Result<Option<Vec<String>>, Da
         .map(|x2| x2.1.clone())
         .collect::<Vec<String>>();
 
-    let (res_map, temp_file) = public_function::read_function::data_duplicate_removal(f_v).await?;
+    let (res_map, temp_file) = public_function::read_function::data_duplicate_removal(f_v, uuid).await?;
 
     let temp_mmap = unsafe { Mmap::map(&temp_file) }?;
 

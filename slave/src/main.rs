@@ -7,9 +7,12 @@ use public_function::SLAVE_CONFIG;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
 use tokio::task::JoinHandle;
+use uuid::Uuid;
 use entity_lib::entity::Error::DataLakeError;
+use entity_lib::entity::SlaveEntity::SlaveMessage::drop_table;
 use crate::controls::compress_table::compress_table;
 use crate::controls::create_table::create_table_controls;
+use crate::controls::drop_table::drop_table_operation;
 use crate::controls::insert_data::insert_operation;
 use crate::controls::query_table::query;
 use crate::controls::stream_read::stream_read;
@@ -38,6 +41,9 @@ fn data_read_write() -> JoinHandle<()> {
 
 
             tokio::spawn(async move {
+
+                let uuid = Uuid::new_v4().to_string();
+
                 let (mut read, mut write) = tcp_stream.split();
 
                 loop {
@@ -75,7 +81,7 @@ fn data_read_write() -> JoinHandle<()> {
                                     }
                                 }
                                 SlaveMessage::compress_table(table_name) => {
-                                    let compress_return = compress_table(&table_name).await;
+                                    let compress_return = compress_table(&table_name, &uuid).await;
                                     match compress_return {
                                         Ok(_) => {
                                             write.write_i32(-1).await.unwrap();
@@ -87,7 +93,7 @@ fn data_read_write() -> JoinHandle<()> {
                                 }
                                 SlaveMessage::query(querymessage) => {
 
-                                    let query_return = query(querymessage).await;
+                                    let query_return = query(querymessage, &uuid).await;
                                     match query_return {
                                         Ok(vec) => {
                                             let bincode_bytes = bincode::serialize(&vec).unwrap();
@@ -137,10 +143,38 @@ fn data_read_write() -> JoinHandle<()> {
                                     }
 
                                 }
+                                SlaveMessage::drop_table(table_name) => {
+
+                                    match drop_table_operation(&table_name).await{
+                                        Ok(_) => {
+                                            write.write_i32(-1).await.unwrap();
+                                        }
+                                        Err(e) => {
+                                            public_function::write_error(e, &mut write).await;
+                                        }
+                                    }
+                                }
                             }
                         }
 
                         Err(e) => {
+
+                            // 如果有临时文件的话 就删除临时文件
+                            let temp_path = format!(
+                                "{}\\{}\\{}",
+                                SLAVE_CONFIG.get("slave.data").unwrap(),
+                                "temp",&uuid);
+
+                            match tokio::fs::metadata(&temp_path).await{
+                                Ok(_) => {
+                                    tokio::fs::remove_dir_all(temp_path).await.unwrap();
+                                }
+                                Err(_) => {}
+                            }
+
+
+
+
                             info!("master 与 slave 的连接断开了:  {}", e);
                             break;
                         }

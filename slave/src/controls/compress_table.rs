@@ -9,7 +9,7 @@ use tokio::fs::OpenOptions;
 use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 use uuid::Uuid;
 
-pub async fn compress_table(table_name: &String) -> Result<(), DataLakeError> {
+pub async fn compress_table(table_name: &String, uuid: &String) -> Result<(), DataLakeError> {
     let data_path = SLAVE_CONFIG.get("slave.data").unwrap();
     let log_path = format!("{}/{}/log", data_path, table_name);
     let compress_path = format!("{}/{}/compress", data_path, table_name);
@@ -51,7 +51,7 @@ pub async fn compress_table(table_name: &String) -> Result<(), DataLakeError> {
         .map(|x2| x2.1.clone())
         .collect::<Vec<String>>();
 
-    let (res_map, temp_file) = public_function::read_function::data_duplicate_removal(f_v).await?;
+    let (res_map, temp_file) = public_function::read_function::data_duplicate_removal(f_v, uuid).await?;
     let temp_mmap = unsafe { Mmap::map(&temp_file) }?;
 
     let mut tmpfile_offsetCode = HashMap::<String, i64>::new();

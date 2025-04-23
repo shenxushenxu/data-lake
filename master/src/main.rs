@@ -22,6 +22,7 @@ use tokio::task::JoinHandle;
 use uuid::Uuid;
 use crate::controls::alter::{alter_add, alter_orop};
 use crate::controls::batch_insert::INSERT_TCPSTREAM_CACHE_POOL;
+use crate::controls::drop_table::drop_table_operation;
 
 /**
 -1 是停止
@@ -153,6 +154,17 @@ fn data_interface() -> JoinHandle<()> {
                                                         public_function::write_error(e, &mut write).await;
                                                     }
                                                 }
+                                            }
+                                            DaqlType::DROP_TABLE(table_name) => {
+                                                match drop_table_operation(&table_name).await{
+                                                    Ok(_) => {
+                                                        write.write_i32(-1).await.unwrap();
+                                                    }
+                                                    Err(e) => {
+                                                        public_function::write_error(e, &mut write).await;
+                                                    }
+                                                }
+
                                             }
                                         },
                                         Err(e) => {

@@ -32,6 +32,7 @@ pub enum SlaveMessage{
     compress_table(String),
     stream_read(StreamReadStruct),
     batch_insert(SlaveInsert),
+    drop_table(String),
 }
 
 

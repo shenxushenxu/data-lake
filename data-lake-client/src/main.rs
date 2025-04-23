@@ -2,10 +2,12 @@ mod controls;
 mod entity;
 use std::io::{Write};
 use std::{env, io};
-use snap::raw::Encoder;
+use std::collections::HashMap;
+use snap::raw::{Decoder, Encoder};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use entity_lib::entity::MasterEntity::{BatchInsert, Statement, TableStructure};
+use entity_lib::entity::SlaveEntity::DataStructure;
 use crate::controls::stream_read_logic::Consumer;
 use crate::entity::ClientStatement;
 
@@ -60,8 +62,17 @@ async fn main() {
                         let mut mess = vec![0; mess_len as usize];
                         stream.read_exact(&mut mess).await.unwrap();
 
-                        let nn = String::from_utf8(mess).unwrap();
-                        println!("||  {}",nn);
+                        let mut decoder = Decoder::new();
+                        let message_bytes = decoder
+                            .decompress_vec(&mess)
+                            .unwrap_or_else(|e| panic!("解压失败: {}", e));
+
+                        let data_vec =
+                            serde_json::from_slice::<Vec<String>>(&message_bytes).unwrap();
+                        for data in data_vec.iter() {
+                            println!("||  {}",data);
+                        }
+
 
                     }
                 }

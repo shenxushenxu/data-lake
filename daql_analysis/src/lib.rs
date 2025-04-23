@@ -49,6 +49,9 @@ pub async fn daql_analysis_function<'a>(daql: &'a str) -> Result<DaqlType, DataL
     }else if identification.eq("compress") {
         let table_name = sql.split(" ").collect::<Vec<&str>>()[1].to_string();
         return Ok(DaqlType::COMPRESS_TABLE(table_name));
+    }else if identification.eq("drop") {
+        let table_name = sql.split(" ").collect::<Vec<&str>>()[1].to_string();
+        return Ok(DaqlType::DROP_TABLE(table_name));
     }
 
     return Err(DataLakeError::CustomError(format!("{}  语句错误", sql)));

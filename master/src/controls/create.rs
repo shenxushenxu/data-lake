@@ -1,12 +1,10 @@
 use entity_lib::entity::Error::DataLakeError;
-use entity_lib::entity::MasterEntity::{Create, DataType, TableStructure};
-use entity_lib::entity::SlaveEntity::{SlaveCreate, SlaveMessage};
+use entity_lib::entity::MasterEntity::{TableStructure};
 use public_function::MASTER_CONFIG;
-use std::collections::HashMap;
 use tokio::fs::OpenOptions;
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
-use tokio::stream;
+use entity_lib::entity::SlaveEntity::{SlaveCreate, SlaveMessage};
 
 pub async fn create_table(table_structure: TableStructure) -> Result<(), DataLakeError> {
     let file_path = format!(
@@ -15,7 +13,7 @@ pub async fn create_table(table_structure: TableStructure) -> Result<(), DataLak
         &table_structure.table_name
     );
 
-    match std::fs::metadata(&file_path) {
+    match tokio::fs::metadata(&file_path).await {
         Ok(_) => {
             return Err(DataLakeError::CustomError(format!(
                 "{} 表已经存在",
@@ -39,7 +37,6 @@ pub async fn create_table(table_structure: TableStructure) -> Result<(), DataLak
             }
 
 
-
             let mut file = OpenOptions::new()
                 .write(true)
                 .create(true)
@@ -49,17 +46,8 @@ pub async fn create_table(table_structure: TableStructure) -> Result<(), DataLak
             file.write_all(&bincode_table_structure).await?;
 
 
-
-
-
         }
     }
-
-
-
-
-
-
 
     return Ok(());
 }

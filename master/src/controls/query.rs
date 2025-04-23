@@ -1,16 +1,20 @@
+use std::collections::HashMap;
 use crate::controls::metadata::get_metadata;
 use entity_lib::entity::Error::DataLakeError;
 use entity_lib::entity::SlaveEntity::{QueryMessage, SlaveMessage};
 use std::sync::Arc;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
+use crate::controls::stream_read::data_complete;
 
 pub async fn query_daql(query_message: QueryMessage) -> Result<Option<Vec<String>>, DataLakeError> {
     let table_name = &query_message.tablename;
     let table_structure = get_metadata(table_name).await?;
     let (sender, mut receiver) = tokio::sync::mpsc::channel::<Vec<String>>(100000);
 
-    let address_map = &table_structure.partition_address;
+    let arc_table_structure = Arc::new(table_structure);
+
+    let address_map = &arc_table_structure.partition_address;
     for key in address_map.keys() {
         let querymessage = QueryMessage {
             tablename: format!("{}-{}", table_name, key),
@@ -50,8 +54,21 @@ pub async fn query_daql(query_message: QueryMessage) -> Result<Option<Vec<String
                             stream.read_exact(&mut mess).await?;
                             let data_map = bincode::deserialize::<Option<Vec<String>>>(&mess)?;
 
+                            let mut data_vec = Vec::<String>::new();
                             if let Some(data) = data_map {
-                                if let Err(_) = se.send(data).await {
+                                let d_arc_table_structure = Arc::clone(&arc_table_structure);
+                                for st in data{
+                                    let mut data_map = serde_json::from_str::<HashMap<String, String>>(st.as_str())?;
+                                    let col_type = &d_arc_table_structure.col_type;
+                                    let complete_map = data_complete(col_type, &mut data_map).await;
+                                    let json_str = serde_json::to_string(complete_map)?;
+
+                                    data_vec.push(json_str);
+                                }
+
+
+
+                                if let Err(_) = se.send(data_vec).await {
                                     println!("receiver dropped");
                                     break;
                                 }

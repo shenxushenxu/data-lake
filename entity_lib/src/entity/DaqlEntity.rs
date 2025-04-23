@@ -10,4 +10,5 @@ pub enum DaqlType{
     ALTER_ADD((String, String, String, String, String)),
     SHOW_TABLE(String),
     COMPRESS_TABLE(String),
+    DROP_TABLE(String),
 }

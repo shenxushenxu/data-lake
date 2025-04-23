@@ -70,6 +70,8 @@ cargo run --release -- masterip:masterprot
 
 ## 创建表：
 {"sql":"create table table_name(id INT PRIMARY KEY, username string NOT NULL, age long, xingbie string default '男') partition_number = 4"}
+## 删除表
+{"sql":"drop table_name"}
 ## 批量插入数据：
 <br>{"batch_insert":{"data":[{"id":"0","_crud_type":"insert","username":"data-lake","age":"1","xingbie":"0"},{"id":"1","_crud_type":"insert","username":"data-lake","age":"1","xingbie":"0"},{"id":"2","_crud_type":"insert","username":"data-lake","age":"1","xingbie":"0"},{"id":"3","_crud_type":"insert","username":"data-lake","age":"1","xingbie":"0"},{"id":"4","_crud_type":"insert","username":"data-lake","age":"1","xingbie":"0"},{"id":"5","_crud_type":"insert","username":"data-lake","age":"1","xingbie":"0"},{"id":"6","_crud_type":"insert","username":"data-lake","age":"1","xingbie":"0"},{"id":"7","_crud_type":"insert","username":"data-lake","age":"1","xingbie":"0"},{"id":"8","_crud_type":"insert","username":"data-lake","age":"1","xingbie":"0"},{"id":"9","_crud_type":"insert","username":"data-lake","age":"1","xingbie":"0"},{"id":"10","_crud_type":"insert","username":"data-lake","age":"1","xingbie":"0"}],"table_name":"table_name"}}
 ## 查询表内的数据：

@@ -13,10 +13,10 @@ use uuid::Uuid;
 
 
 
-pub async fn data_duplicate_removal(file_vec: Vec<String>) -> Result<(HashMap<String, (usize, usize)>, File), DataLakeError> {
+pub async fn data_duplicate_removal(file_vec: Vec<String>, uuid:&String) -> Result<(HashMap<String, (usize, usize)>, File), DataLakeError> {
     let mut res_map = HashMap::<String, (usize, usize)>::new();
 
-    let uuid = Uuid::new_v4().to_string();
+    // let uuid = Uuid::new_v4().to_string();
     let temp_path = format!(
         "{}\\{}",
         SLAVE_CONFIG.get("slave.data").unwrap(),

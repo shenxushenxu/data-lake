@@ -22,7 +22,6 @@ pub async fn stream_read_data(
     masterstreamread: MasterStreamRead,
     uuid: &String,
 ) -> Result<Receiver<Option<Vec<u8>>>, DataLakeError> {
-
     let table_name = masterstreamread.table_name;
     let read_count = &masterstreamread.read_count;
     let table_structure = get_metadata(&table_name).await?;
@@ -116,47 +115,18 @@ pub async fn stream_read_data(
                                 .decompress_vec(mess)
                                 .unwrap_or_else(|e| panic!("解压失败: {}", e));
                             let message = String::from_utf8(message_bytes)?;
-                            let mut datastructure = serde_json::from_str::<DataStructure>(&message)?;
+                            let mut datastructure =
+                                serde_json::from_str::<DataStructure>(&message)?;
                             let mut data = serde_json::from_str::<HashMap<String, String>>(
                                 &datastructure.data,
                             )?;
 
                             let col_type = &tablestructure.col_type;
 
-                            let mut remove_key = Vec::<String>::new();
-                            let mut insert_map = HashMap::<String, String>::new();
+                            // 补全\验证  数据
+                            let complete_map = data_complete(col_type, &mut data).await;
 
-                            for (key, value) in data.iter() {
-                                match col_type.get(key) {
-                                    None => {
-                                        remove_key.push(key.clone());
-                                    }
-                                    Some(attribute) => {
-                                        let column_configh_judgment = &attribute.1;
-
-                                        if value.is_empty() {
-                                            if let ColumnConfigJudgment::DEFAULT =
-                                                column_configh_judgment
-                                            {
-                                                let default_option = &attribute.2;
-                                                if let Some(default_value) = default_option {
-                                                    insert_map
-                                                        .insert(key.clone(), default_value.clone());
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-
-                            for r_k in remove_key.into_iter() {
-                                data.remove(&r_k);
-                            }
-                            for (k, v) in insert_map.into_iter() {
-                                data.insert(k, v);
-                            }
-
-                            datastructure.data = serde_json::to_string(&data)?;
+                            datastructure.data = serde_json::to_string(&complete_map)?;
                             vec_datastructure.push(datastructure);
                         }
 
@@ -180,4 +150,35 @@ pub async fn stream_read_data(
     }
 
     return Ok(receiver);
+}
+
+pub async fn data_complete<'a>(
+    col_type: &HashMap<String, (DataType, ColumnConfigJudgment, Option<String>)>,
+    data: &'a mut HashMap<String, String>,
+) -> &'a HashMap<String, String>{
+    let mut insert_map = HashMap::<String, String>::new();
+    for (key, value) in col_type.iter() {
+        match data.get(key) {
+            None => {
+                insert_map.insert(key.clone(), String::from(""));
+            }
+            Some(data_value) => {
+                if data_value.is_empty() {
+                    let column_configh_judgment = &value.1;
+                    if let ColumnConfigJudgment::DEFAULT = column_configh_judgment {
+                        let default_option = &value.2;
+                        if let Some(default_value) = default_option {
+                            insert_map.insert(key.clone(), default_value.clone());
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    for (k, v) in insert_map.into_iter() {
+        data.insert(k, v);
+    }
+
+    return data;
 }

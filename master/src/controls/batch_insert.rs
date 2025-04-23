@@ -72,8 +72,7 @@ pub async fn batch_format_matching(
 
     for batch_datum in batch_data.iter_mut() {
         // 验证 插入的数据  与表的元数据是否匹配
-        let crud_type = batch_datum.get("_crud_type").unwrap().clone();
-        batch_datum.remove("_crud_type");
+        let crud_type = batch_datum.remove("_crud_type").unwrap();
 
         type_verification(structure_col_type, batch_datum, table_name).await?;
 
@@ -110,7 +109,7 @@ pub async fn type_verification(
 ) -> Result<(), DataLakeError> {
     for (col_name, value) in insert_data.iter() {
         match metadata_col_type.get(col_name) {
-            Some((data_type, column_conf_judg, default_value)) => {
+            Some((data_type, column_conf_judg, _)) => {
                 // 验证类型是否匹配
                 verification_type(col_name, value, data_type)?;
                 //验证属性配置是否匹配
