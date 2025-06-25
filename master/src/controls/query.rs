@@ -5,6 +5,7 @@ use entity_lib::entity::SlaveEntity::{QueryMessage, SlaveMessage};
 use std::sync::Arc;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
+use entity_lib::entity::MasterEntity::{Info, PartitionInfo};
 use crate::controls::stream_read::data_complete;
 
 pub async fn query_daql(query_message: QueryMessage) -> Result<Option<Vec<String>>, DataLakeError> {
@@ -27,11 +28,26 @@ pub async fn query_daql(query_message: QueryMessage) -> Result<Option<Vec<String
         let bytes = Arc::new(bincode::serialize(&slave_message)?);
         let bytes_len = bytes.len();
 
-        let address = address_map.get(key).unwrap().clone();
+        let partition_info_vec = address_map.get(key).unwrap().clone();
 
         let se = sender.clone();
-
+        
+        let clone_arc_table_structure = Arc::clone(&arc_table_structure);
         tokio::spawn(async move {
+
+            let partition_info = partition_info_vec.iter().filter(|x| {
+                match x.info {
+                    Info::Leader => {
+                        true
+                    }
+                    Info::Follower => {
+                        false
+                    }
+                }
+            }).collect::<Vec<&PartitionInfo>>()[0];
+            
+            let address = &partition_info.address;
+            
             let mut stream = TcpStream::connect(address).await?;
 
             stream.write_i32(bytes_len.clone() as i32).await?;
@@ -56,10 +72,10 @@ pub async fn query_daql(query_message: QueryMessage) -> Result<Option<Vec<String
 
                             let mut data_vec = Vec::<String>::new();
                             if let Some(data) = data_map {
-                                let d_arc_table_structure = Arc::clone(&arc_table_structure);
+                                
                                 for st in data{
                                     let mut data_map = serde_json::from_str::<HashMap<String, String>>(st.as_str())?;
-                                    let col_type = &d_arc_table_structure.col_type;
+                                    let col_type = &clone_arc_table_structure.col_type;
                                     let complete_map = data_complete(col_type, &mut data_map).await;
                                     let json_str = serde_json::to_string(complete_map)?;
 

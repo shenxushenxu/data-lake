@@ -1,4 +1,4 @@
-use crate::SLAVE_CONFIG;
+use crate::{SlaveConfig, SLAVE_CONFIG};
 use entity_lib::entity::Error::DataLakeError;
 use entity_lib::entity::SlaveEntity::DataStructure;
 use snap::raw::Decoder;
@@ -16,10 +16,17 @@ use uuid::Uuid;
 pub async fn data_duplicate_removal(file_vec: Vec<String>, uuid:&String) -> Result<(HashMap<String, (usize, usize)>, File), DataLakeError> {
     let mut res_map = HashMap::<String, (usize, usize)>::new();
 
+
+    let slave_data = {
+        let mut slave_config = SLAVE_CONFIG.lock().await;
+        slave_config.get_slave_data().await
+    };
+    
+    
     // let uuid = Uuid::new_v4().to_string();
     let temp_path = format!(
-        "{}\\{}",
-        SLAVE_CONFIG.get("slave.data").unwrap(),
+        "{}/{}",
+        slave_data,
         "temp"
     );
     let path = Path::new(&temp_path);
@@ -31,7 +38,7 @@ pub async fn data_duplicate_removal(file_vec: Vec<String>, uuid:&String) -> Resu
         .read(true)
         .create(true)
         .append(true)
-        .open(format!("{}\\{}",&temp_path, uuid))
+        .open(format!("{}/{}",&temp_path, uuid))
         .await?;
 
     for file_path in file_vec.iter() {
@@ -127,7 +134,28 @@ pub async fn data_duplicate_removal(file_vec: Vec<String>, uuid:&String) -> Resu
 
 
 
+pub async fn get_slave_path(table_name: &String) -> Result<String, DataLakeError> {
+    
 
+    let slave_data = {
+        let slave_config = SLAVE_CONFIG.lock().await;
+        let slave_data = &slave_config.slave_data;
+        slave_data.clone()
+    };
+    
+    for data_path in slave_data {
+        
+        let file_path = format!("{}/{}", data_path, table_name);
+        
+        let path = Path::new(&file_path);
+        if path.exists() {
+            return Ok(file_path);
+        }
+    }
+    
+    return Err(DataLakeError::CustomError(format!("{} This partition does not exist.",table_name)));
+    
+}
 
 
 pub struct ArrayBytesReader<'a> {

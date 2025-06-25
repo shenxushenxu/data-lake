@@ -1,4 +1,4 @@
-use crate::controls::metadata::get_metadata;
+use crate::controls::metadata::{get_metadata, get_table_path};
 use entity_lib::entity::Error::DataLakeError;
 use public_function::MASTER_CONFIG;
 use tokio::fs::{File};
@@ -45,19 +45,15 @@ pub async fn alter_orop(alteradd: (String, String)) -> Result<(), DataLakeError>
             }
         }
 
-
-
-        let file_path = format!(
-            "{}\\{}",
-            MASTER_CONFIG.get("master.data.path").unwrap(),
-            table_name
-        );
+        
+        
+        let file_path = get_table_path(&table_name).await?;
         let mut file = File::create(file_path).await?;
         file.write_all(data.as_slice()).await?;
 
     } else {
         return Err(DataLakeError::CustomError(format!(
-            "{} 不存在这个列",
+            "{} This column does not exist.",
             col_name
         )));
     }
@@ -149,16 +145,11 @@ pub async fn alter_add(
         }
 
 
-        let file_path = format!(
-            "{}\\{}",
-            MASTER_CONFIG.get("master.data.path").unwrap(),
-            table_name
-        );
+        let file_path = get_table_path(&table_name).await?;
         let data = bincode::serialize(&tablestruct)?;
         let mut file = File::create(file_path).await?;
         file.write_all(data.as_slice()).await?;
-
-
+        
     }
 
     Ok(())

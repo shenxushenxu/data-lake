@@ -8,23 +8,26 @@ use std::io::SeekFrom;
 use tokio::fs::OpenOptions;
 use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 use uuid::Uuid;
+use public_function::read_function::get_slave_path;
 
 pub async fn compress_table(table_name: &String, uuid: &String) -> Result<(), DataLakeError> {
-    let data_path = SLAVE_CONFIG.get("slave.data").unwrap();
-    let log_path = format!("{}/{}/log", data_path, table_name);
+    
+    
+    // 
+    // let log_path = format!("{}/{}/log", data_path, table_name);
+    let data_path = get_slave_path(table_name).await?;
     let compress_path = format!("{}/{}/compress", data_path, table_name);
 
-    let mut log_files = public_function::get_list_filename(&log_path[..]).await;
-    let mut compress_files = public_function::get_list_filename(&compress_path[..]).await;
-
-    log_files.append(&mut compress_files);
+    let mut log_files = public_function::get_list_filename(&table_name).await;
+    // let mut compress_files = public_function::get_list_filename(&compress_path[..]).await;
+    // log_files.append(&mut compress_files);
 
     let mut file_vec = log_files
         .iter()
         .filter(|x1| {
             let file_name = &x1.0;
 
-            if file_name.contains(".log") || file_name.contains(".snappy") {
+            if file_name.contains(".snappy") {
                 return true;
             }
             return false;
@@ -34,7 +37,7 @@ pub async fn compress_table(table_name: &String, uuid: &String) -> Result<(), Da
     file_vec.sort_by_key(|x| {
         let file_name = &x.0;
 
-        let offset_n = file_name.replace(".log", "").replace(".snappy", "");
+        let offset_n = file_name.replace(".snappy", "");
 
         let file_code = offset_n.parse::<i64>().unwrap();
 
@@ -63,22 +66,23 @@ pub async fn compress_table(table_name: &String, uuid: &String) -> Result<(), Da
         .create(true)
         .write(true)
         .append(true)
-        .open(format!("{}\\{}.snappy", &compress_path, tmp_file_name))
+        .open(format!("{}/{}.snappy", &compress_path, tmp_file_name))
         .await?;
 
     let mut index_file = OpenOptions::new()
         .create(true)
         .write(true)
         .append(true)
-        .open(format!("{}\\{}.index", &compress_path, tmp_file_name))
+        .open(format!("{}/{}.index", &compress_path, tmp_file_name))
         .await?;
 
     let mut offset: i64 = 0;
 
-    let file_max_capacity = SLAVE_CONFIG
-        .get("slave.file.segment.bytes")
-        .unwrap()
-        .parse::<u64>()?;
+    let file_max_capacity = {
+        let slave_config = SLAVE_CONFIG.lock().await;
+        slave_config.slave_file_segment_bytes as u64
+    };
+    
 
     for (key, (position, len)) in res_map.into_iter() {
         let data_bytes = &temp_mmap[position..(position + len)];
@@ -116,14 +120,14 @@ pub async fn compress_table(table_name: &String, uuid: &String) -> Result<(), Da
                 .create(true)
                 .write(true)
                 .append(true)
-                .open(format!("{}\\{}.snappy", &compress_path, tmp_file_name))
+                .open(format!("{}/{}.snappy", &compress_path, tmp_file_name))
                 .await?;
 
             index_file = OpenOptions::new()
                 .create(true)
                 .write(true)
                 .append(true)
-                .open(format!("{}\\{}.index", &compress_path, tmp_file_name))
+                .open(format!("{}/{}.index", &compress_path, tmp_file_name))
                 .await?;
 
             tmpfile_offsetCode.insert(tmp_file_name.clone(), offset);
@@ -143,12 +147,12 @@ pub async fn compress_table(table_name: &String, uuid: &String) -> Result<(), Da
 
     // 将临时文件的名字，改为正经数据文件的名字
     for key in tmpfile_offsetCode.keys() {
-        let old_snappy = format!("{}\\{}.snappy", &compress_path, key);
-        let old_index = format!("{}\\{}.index", &compress_path, key);
+        let old_snappy = format!("{}/{}.snappy", &compress_path, key);
+        let old_index = format!("{}/{}.index", &compress_path, key);
 
         let offset_name = tmpfile_offsetCode.get(key).unwrap();
-        let new_snappy = format!("{}\\{}.snappy", &compress_path, offset_name);
-        let new_index = format!("{}\\{}.index", &compress_path, offset_name);
+        let new_snappy = format!("{}/{}.snappy", &compress_path, offset_name);
+        let new_index = format!("{}/{}.index", &compress_path, offset_name);
 
         std::fs::rename(old_snappy, new_snappy)?;
         std::fs::rename(old_index, new_index)?;

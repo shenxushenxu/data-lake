@@ -115,6 +115,23 @@ pub struct Parti {
     pub offset: i64,
 }
 
+
+/**
+区分分区的副本的活跃状态和等待状态
+**/
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub enum Info{
+    Leader,
+    Follower
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct PartitionInfo{
+    pub address: String,
+    pub info: Info,
+}
+
+
 /**
 表结构的 struct
 **/
@@ -125,7 +142,7 @@ pub struct TableStructure {
     // 表的列名和对应的类型
     pub col_type: HashMap::<String, (DataType, ColumnConfigJudgment, Option<String>)>,
     // 分区编号对应的slave 地址
-    pub partition_address: HashMap<usize, String>,
+    pub partition_address: HashMap<usize, Vec<PartitionInfo>>,
     // 分区个数
     pub partition_number: usize,
     // 主键的名字

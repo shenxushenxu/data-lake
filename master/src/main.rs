@@ -1,28 +1,31 @@
 mod controls;
+mod mechanism;
 
+use crate::controls::alter::{alter_add, alter_orop};
+use crate::controls::batch_insert::INSERT_TCPSTREAM_CACHE_POOL;
 use crate::controls::compress_table::compress_table;
 use crate::controls::create::create_table;
+use crate::controls::drop_table::drop_table_operation;
 use crate::controls::metadata::get_metadata;
 use crate::controls::query::query_daql;
-use crate::controls::stream_read::{stream_read_data, STREAM_TCP_TABLESTRUCTURE};
+use crate::controls::stream_read::{STREAM_TCP_TABLESTRUCTURE, stream_read_data};
+use crate::mechanism::replicas::copy_sync_notif;
 use daql_analysis::daql_analysis_function;
 use entity_lib::entity::DaqlEntity::DaqlType;
 use entity_lib::entity::Error::DataLakeError;
 use entity_lib::entity::MasterEntity::{BatchInsertTruth, Statement};
 use log::{error, info};
-use public_function::{MASTER_CONFIG, write_error};
+use public_function::{MASTER_CONFIG, MasterConfig, load_properties, write_error};
 use serde_json::json;
 use snap::raw::Decoder;
 use std::any::Any;
 use std::collections::HashMap;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
+use tokio::sync::Mutex;
 use tokio::sync::mpsc::Receiver;
 use tokio::task::JoinHandle;
 use uuid::Uuid;
-use crate::controls::alter::{alter_add, alter_orop};
-use crate::controls::batch_insert::INSERT_TCPSTREAM_CACHE_POOL;
-use crate::controls::drop_table::drop_table_operation;
 
 /**
 -1 是停止
@@ -30,12 +33,39 @@ use crate::controls::drop_table::drop_table_operation;
 **/
 #[tokio::main]
 async fn main() {
+    {
+        let args: Vec<String> = std::env::args().collect();
+        println!("{:?}", args);
+        let file_path = args.get(1).unwrap();
+
+        let map = load_properties(file_path);
+
+        let master_data_port = map.get("master.data.port").unwrap().clone();
+        let master_path = map.get("master.data.path").unwrap().clone();
+        let nodes = map.get("slave.nodes").unwrap().clone();
+
+        let master_data_path = master_path
+            .split(",")
+            .map(|x| x.trim().to_string())
+            .collect::<Vec<String>>();
+        let slave_nodes = nodes
+            .split(",")
+            .map(|x| x.trim().to_string())
+            .collect::<Vec<String>>();
+
+        let mut master_config = MASTER_CONFIG.lock().await;
+        unsafe {
+            *master_config = MasterConfig::new(master_data_port, master_data_path, slave_nodes);
+        }
+    }
+
     // 初始化日志系统
     env_logger::init();
 
     let master_main = data_interface();
-
-    tokio::join!(master_main);
+    let replicas_sync = copy_sync_notif();
+    println!("master  启动成功.......");
+    tokio::join!(master_main, replicas_sync);
 }
 
 /**
@@ -43,13 +73,15 @@ async fn main() {
 **/
 fn data_interface() -> JoinHandle<()> {
     let joinhandle = tokio::spawn(async move {
-        let listener = TcpListener::bind(MASTER_CONFIG.get("master.data.port").unwrap())
-            .await
-            .unwrap();
+        let master_config = MASTER_CONFIG.lock().await;
+        let master_data_port = &master_config.master_data_port;
+
+        let listener = TcpListener::bind(master_data_port).await.unwrap();
+
+        drop(master_config);
 
         loop {
             let (mut tcp_stream, _) = listener.accept().await.unwrap();
-
 
             tokio::spawn(async move {
                 let uuid = Uuid::new_v4().to_string();
@@ -68,111 +100,117 @@ fn data_interface() -> JoinHandle<()> {
                             let statement: Statement = serde_json::from_str(&message_str).unwrap();
 
                             match statement {
-                                Statement::sql(daql) => {
-                                    match daql_analysis_function(&daql).await {
-                                        Ok(daqltype) => match daqltype {
-                                            DaqlType::CREATE_TABLE(tablestructure) => {
-
-                                                match create_table(tablestructure).await {
-                                                    Ok(_) => {
-                                                        write.write_i32(-1).await.unwrap();
-                                                    }
-                                                    Err(e) => {
-                                                        public_function::write_error(e, &mut write)
-                                                            .await;
-                                                    }
+                                Statement::sql(daql) => match daql_analysis_function(&daql).await {
+                                    Ok(daqltype) => match daqltype {
+                                        DaqlType::CREATE_TABLE(tablestructure) => {
+                                            match create_table(tablestructure).await {
+                                                Ok(_) => {
+                                                    write.write_i32(-1).await.unwrap();
+                                                }
+                                                Err(e) => {
+                                                    public_function::write_error(e, &mut write)
+                                                        .await;
                                                 }
                                             }
-                                            DaqlType::SELECT_TABLE(querymessage) => {
-                                                match query_daql(querymessage).await {
-                                                    Ok(option_vec) => {
-                                                        if let Some(vec) = option_vec {
-                                                            for ve in vec {
-                                                                let byt = ve.as_bytes();
-                                                                let write_len = byt.len();
-                                                                write
-                                                                    .write_i32(write_len as i32)
-                                                                    .await
-                                                                    .unwrap();
-                                                                write.write_all(byt).await.unwrap();
-                                                            }
-                                                        }
-                                                        write.write_i32(-1).await.unwrap();
-                                                    }
-                                                    Err(e) => {
-                                                        public_function::write_error(e, &mut write).await;
-                                                    }
-                                                }
-                                            }
-                                            DaqlType::ALTER_OROP(alterorop) => {
-                                                match alter_orop(alterorop).await{
-                                                    Ok(_) => {
-                                                        write.write_i32(-1).await.unwrap();
-                                                    }
-                                                    Err(e) => {
-                                                        public_function::write_error(e, &mut write).await;
-                                                    }
-                                                }
-                                            }
-                                            DaqlType::ALTER_ADD(alteradd) => {
-                                                match alter_add(alteradd).await {
-                                                    Ok(_) => {
-                                                        write.write_i32(-1).await.unwrap();
-                                                    }
-                                                    Err(e) => {
-                                                        public_function::write_error(e, &mut write).await;
-                                                    }
-                                                }
-                                            }
-                                            DaqlType::SHOW_TABLE(table_name) => {
-                                                let metadata_return = get_metadata(&table_name).await;
-                                                match metadata_return {
-                                                    Ok(table_structure) => {
-                                                        let metadtat_message = serde_json::to_string(&table_structure).unwrap();
-                                                        let byt = metadtat_message.as_bytes();
-
-                                                        let write_len = byt.len();
-                                                        let write_message = byt;
-
-                                                        write.write_i32(write_len as i32).await.unwrap();
-                                                        write.write_all(write_message).await.unwrap();
-                                                        write.write_i32(-1).await.unwrap();
-                                                    }
-                                                    Err(e) => {
-                                                        public_function::write_error(e, &mut write).await;
-                                                    }
-                                                }
-                                            }
-                                            DaqlType::COMPRESS_TABLE(table_name) => {
-                                                let compress_return = compress_table(&table_name).await;
-
-                                                match compress_return {
-                                                    Ok(_) => {
-                                                        write.write_i32(-1).await.unwrap();
-                                                    }
-                                                    Err(e) => {
-                                                        public_function::write_error(e, &mut write).await;
-                                                    }
-                                                }
-                                            }
-                                            DaqlType::DROP_TABLE(table_name) => {
-                                                match drop_table_operation(&table_name).await{
-                                                    Ok(_) => {
-                                                        write.write_i32(-1).await.unwrap();
-                                                    }
-                                                    Err(e) => {
-                                                        public_function::write_error(e, &mut write).await;
-                                                    }
-                                                }
-
-                                            }
-                                        },
-                                        Err(e) => {
-                                            public_function::write_error(e, &mut write).await;
                                         }
-                                    }
+                                        DaqlType::SELECT_TABLE(querymessage) => {
+                                            match query_daql(querymessage).await {
+                                                Ok(option_vec) => {
+                                                    if let Some(vec) = option_vec {
+                                                        for ve in vec {
+                                                            let byt = ve.as_bytes();
+                                                            let write_len = byt.len();
+                                                            write
+                                                                .write_i32(write_len as i32)
+                                                                .await
+                                                                .unwrap();
+                                                            write.write_all(byt).await.unwrap();
+                                                        }
+                                                    }
+                                                    write.write_i32(-1).await.unwrap();
+                                                }
+                                                Err(e) => {
+                                                    public_function::write_error(e, &mut write)
+                                                        .await;
+                                                }
+                                            }
+                                        }
+                                        DaqlType::ALTER_OROP(alterorop) => {
+                                            match alter_orop(alterorop).await {
+                                                Ok(_) => {
+                                                    write.write_i32(-1).await.unwrap();
+                                                }
+                                                Err(e) => {
+                                                    public_function::write_error(e, &mut write)
+                                                        .await;
+                                                }
+                                            }
+                                        }
+                                        DaqlType::ALTER_ADD(alteradd) => {
+                                            match alter_add(alteradd).await {
+                                                Ok(_) => {
+                                                    write.write_i32(-1).await.unwrap();
+                                                }
+                                                Err(e) => {
+                                                    public_function::write_error(e, &mut write)
+                                                        .await;
+                                                }
+                                            }
+                                        }
+                                        DaqlType::SHOW_TABLE(table_name) => {
+                                            let metadata_return = get_metadata(&table_name).await;
+                                            match metadata_return {
+                                                Ok(table_structure) => {
+                                                    let metadtat_message =
+                                                        serde_json::to_string(&table_structure)
+                                                            .unwrap();
+                                                    let byt = metadtat_message.as_bytes();
 
-                                }
+                                                    let write_len = byt.len();
+                                                    let write_message = byt;
+
+                                                    write
+                                                        .write_i32(write_len as i32)
+                                                        .await
+                                                        .unwrap();
+                                                    write.write_all(write_message).await.unwrap();
+                                                    write.write_i32(-1).await.unwrap();
+                                                }
+                                                Err(e) => {
+                                                    public_function::write_error(e, &mut write)
+                                                        .await;
+                                                }
+                                            }
+                                        }
+                                        DaqlType::COMPRESS_TABLE(table_name) => {
+                                            let compress_return = compress_table(&table_name).await;
+
+                                            match compress_return {
+                                                Ok(_) => {
+                                                    write.write_i32(-1).await.unwrap();
+                                                }
+                                                Err(e) => {
+                                                    public_function::write_error(e, &mut write)
+                                                        .await;
+                                                }
+                                            }
+                                        }
+                                        DaqlType::DROP_TABLE(table_name) => {
+                                            match drop_table_operation(&table_name).await {
+                                                Ok(_) => {
+                                                    write.write_i32(-1).await.unwrap();
+                                                }
+                                                Err(e) => {
+                                                    public_function::write_error(e, &mut write)
+                                                        .await;
+                                                }
+                                            }
+                                        }
+                                    },
+                                    Err(e) => {
+                                        public_function::write_error(e, &mut write).await;
+                                    }
+                                },
                                 Statement::stream_read(stream_read) => {
                                     let stream_return = stream_read_data(stream_read, &uuid).await;
 
@@ -180,8 +218,10 @@ fn data_interface() -> JoinHandle<()> {
                                         Ok(mut receiver) => {
                                             while let Some(message) = receiver.recv().await {
                                                 if let Some(message_bytes) = message {
-
-                                                    write.write_i32(message_bytes.len() as i32).await.unwrap();
+                                                    write
+                                                        .write_i32(message_bytes.len() as i32)
+                                                        .await
+                                                        .unwrap();
                                                     write.write_all(&message_bytes).await.unwrap();
                                                 }
                                             }

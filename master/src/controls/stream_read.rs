@@ -1,8 +1,6 @@
 use crate::controls::metadata::get_metadata;
 use entity_lib::entity::Error::DataLakeError;
-use entity_lib::entity::MasterEntity::{
-    ColumnConfigJudgment, DataType, MasterStreamRead, Parti, TableStructure,
-};
+use entity_lib::entity::MasterEntity::{ColumnConfigJudgment, DataType, Info, MasterStreamRead, Parti, PartitionInfo, TableStructure};
 use entity_lib::entity::SlaveEntity::{DataStructure, SlaveMessage, StreamReadStruct};
 use public_function::read_function::ArrayBytesReader;
 use snap::raw::{Decoder, Encoder};
@@ -46,7 +44,7 @@ pub async fn stream_read_data(
         let partition_code = &parti.patition_code;
         let offset = parti.offset;
 
-        let address = address_map.get(&partition_code).unwrap();
+        let partition_info_vec = address_map.get(&partition_code).unwrap();
 
         let stream_read = StreamReadStruct {
             table_name: table_name.clone(),
@@ -56,18 +54,30 @@ pub async fn stream_read_data(
         };
 
         let sen = sender.clone();
-        let addre = address.clone();
 
-        let map_key = format!("{}_{}_{}", uuid, addre, &table_name);
+
+        let partition_info = partition_info_vec.iter().filter(|x| {
+            match x.info {
+                Info::Leader => {
+                    true
+                }
+                Info::Follower => {
+                    false
+                }
+            }
+        }).collect::<Vec<&PartitionInfo>>()[0].clone();
+
+        let map_key = format!("{}_{}", uuid, &table_name);
 
         let ta_na = Arc::new(table_name.clone());
         tokio::spawn(async move {
+            
             let mut stream_map = STREAM_TCP_TABLESTRUCTURE.lock().await;
             let (stream, tablestructure) = match stream_map.get_mut(&map_key[..]) {
                 Some(stream) => stream,
                 None => {
-                    let adre = &addre[..];
-                    let mut stream = TcpStream::connect(adre).await?;
+                    let address = &partition_info.address;
+                    let mut stream = TcpStream::connect(address).await?;
                     let bb = ta_na.clone();
 
                     let tablestructure = get_metadata(bb.as_ref()).await?;

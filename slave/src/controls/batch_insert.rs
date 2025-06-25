@@ -6,6 +6,7 @@ use tokio::io::{AsyncSeekExt, AsyncWriteExt};
 use entity_lib::entity::Error::DataLakeError;
 use entity_lib::entity::MasterEntity::{BatchInsert, Insert, SlaveInsert};
 use entity_lib::entity::SlaveEntity::{DataStructure, IndexStruct, SlaveCacheStruct};
+use public_function::read_function::get_slave_path;
 use public_function::SLAVE_CONFIG;
 use crate::controls::insert_data::FILE_CACHE_POOL;
 
@@ -41,12 +42,12 @@ pub async fn insert_operation(batch_insert: &SlaveInsert) -> Result<(), DataLake
             }
             None => {
                 // 插入数据的缓存中，没有插入的文件对象
-
+                let partition_name = format!("{}-{}", table_name, &partition_code);
+                let partition_path = get_slave_path(&partition_name).await?;
+                
                 let metadata_file_path = format!(
-                    "{}\\{}-{}\\{}",
-                    SLAVE_CONFIG.get("slave.data").unwrap(),
-                    table_name,
-                    partition_code,
+                    "{}/{}",
+                    partition_path,
                     "metadata.log"
                 );
 
@@ -70,18 +71,14 @@ pub async fn insert_operation(batch_insert: &SlaveInsert) -> Result<(), DataLake
 
 
                 let log_file_path = format!(
-                    "{}\\{}-{}\\{}\\{}.snappy",
-                    SLAVE_CONFIG.get("slave.data").unwrap(),
-                    table_name,
-                    partition_code,
+                    "{}/{}/{}.snappy",
+                    partition_path,
                     "log",
                     offset_file_name
                 );
                 let index_file_path = format!(
-                    "{}\\{}-{}\\{}\\{}.index",
-                    SLAVE_CONFIG.get("slave.data").unwrap(),
-                    table_name,
-                    partition_code,
+                    "{}/{}/{}.index",
+                    partition_path,
                     "log",
                     offset_file_name
                 );
@@ -162,15 +159,17 @@ pub async fn insert_operation(batch_insert: &SlaveInsert) -> Result<(), DataLake
 
         let index_data = bincode::serialize(&index_struct)?;
         index_file.write_all(&index_data).await?;
-
-
-
-
+        
 
 
         offset_init = Some(offset + 1);
-
-        if end_seek > (SLAVE_CONFIG.get("slave.file.segment.bytes").unwrap().parse::<u64>()?){
+        
+        let slave_file_segment_bytes = {
+            let slave_config = SLAVE_CONFIG.lock().await;
+            slave_config.slave_file_segment_bytes as u64
+        };
+        
+        if end_seek > slave_file_segment_bytes{
 
             data_file.flush().await?;
             index_file.flush().await?;

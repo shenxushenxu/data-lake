@@ -33,9 +33,28 @@ pub enum SlaveMessage{
     stream_read(StreamReadStruct),
     batch_insert(SlaveInsert),
     drop_table(String),
+    follower_replicas_sync(ReplicasSyncStruct),
+    leader_replicas_sync(SyncMessage),
 }
 
+#[derive(Serialize, Deserialize, Debug)]
+pub struct SyncMessage{
+    pub offset: i64,
+    pub partition_code: String,
+}
 
+#[derive(Serialize, Deserialize, Debug)]
+pub struct ReplicasSyncStruct{
+    pub slave_parti_name: String,
+    pub leader_address: String,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct ReplicaseSyncData{
+    pub offset_set: Vec<u8>,
+    pub data_set: Vec<u8>,
+    pub index_code: String,
+}
 
 
 /**

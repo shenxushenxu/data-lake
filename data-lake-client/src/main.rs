@@ -2,17 +2,22 @@ mod controls;
 mod entity;
 use std::io::{Write};
 use std::{env, io};
-use std::collections::HashMap;
 use snap::raw::{Decoder, Encoder};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
-use entity_lib::entity::MasterEntity::{BatchInsert, Statement, TableStructure};
-use entity_lib::entity::SlaveEntity::DataStructure;
+use entity_lib::entity::MasterEntity::{BatchInsert, Statement};
 use crate::controls::stream_read_logic::Consumer;
 use crate::entity::ClientStatement;
 
+
 #[tokio::main]
 async fn main() {
+
+
+
+
+
+
     let args: Vec<String> = env::args().collect();
     println!("{:?}", args);
     let mut stream = TcpStream::connect(&args[1]).await.unwrap();

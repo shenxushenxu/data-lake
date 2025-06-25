@@ -9,6 +9,7 @@ use tokio::sync::Mutex;
 use entity_lib::entity::Error::DataLakeError;
 use entity_lib::entity::MasterEntity::Insert;
 use entity_lib::entity::SlaveEntity::{DataStructure, IndexStruct, SlaveCacheStruct};
+use public_function::read_function::get_slave_path;
 use public_function::SLAVE_CONFIG;
 
 pub static FILE_CACHE_POOL: LazyLock<Mutex<HashMap<String, SlaveCacheStruct>>> =
@@ -38,14 +39,13 @@ pub async fn insert_operation(insert: Insert) -> Result<(), DataLakeError>{
             slave_cache_struct
         }
         None => {
-
-            // 插入数据的缓存中，没有插入的文件对象
+            
+            let partition_name = format!("{}-{}", table_name, partition_code);
+            let data_path = get_slave_path(&partition_name).await?;
 
             let metadata_file_path = format!(
-                "{}\\{}-{}\\{}",
-                SLAVE_CONFIG.get("slave.data").unwrap(),
-                table_name,
-                partition_code,
+                "{}/{}",
+                data_path,
                 "metadata.log"
             );
 
@@ -63,18 +63,14 @@ pub async fn insert_operation(insert: Insert) -> Result<(), DataLakeError>{
 
 
             let log_file_path = format!(
-                "{}\\{}-{}\\{}\\{}.snappy",
-                SLAVE_CONFIG.get("slave.data").unwrap(),
-                table_name,
-                partition_code,
+                "{}/{}/{}.snappy",
+                data_path,
                 "log",
                 offset
             );
             let index_file_path = format!(
-                "{}\\{}-{}\\{}\\{}.index",
-                SLAVE_CONFIG.get("slave.data").unwrap(),
-                table_name,
-                partition_code,
+                "{}/{}/{}.index",
+                data_path,
                 "log",
                 offset
             );
@@ -158,7 +154,12 @@ pub async fn insert_operation(insert: Insert) -> Result<(), DataLakeError>{
     }
 
 
-    if end_seek > (SLAVE_CONFIG.get("slave.file.segment.bytes").unwrap().parse::<u64>()?){
+    let slave_file_segment_bytes = {
+        let slave_config = SLAVE_CONFIG.lock().await;
+        slave_config.slave_file_segment_bytes as u64
+    };
+    
+    if end_seek > slave_file_segment_bytes{
 
         data_file.flush().await?;
         index_file.flush().await?;

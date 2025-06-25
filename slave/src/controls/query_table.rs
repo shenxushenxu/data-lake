@@ -6,25 +6,25 @@ use snap::raw::Decoder;
 use std::collections::HashMap;
 use tokio::fs::OpenOptions;
 use tokio::io::AsyncReadExt;
+use public_function::read_function::get_slave_path;
 
 pub async fn query(querymessage: QueryMessage, uuid:&String) -> Result<Option<Vec<String>>, DataLakeError> {
 
+    let partition_name = &querymessage.tablename;
 
-    let log_path = format!(
-        "{}\\{}\\log",
-        SLAVE_CONFIG.get("slave.data").unwrap(),
-        &querymessage.tablename
-    );
-    let compress_path = format!(
-        "{}\\{}\\compress",
-        SLAVE_CONFIG.get("slave.data").unwrap(),
-        &querymessage.tablename
-    );
+    // let data_path = get_slave_path(partition_name).await?;
+    // let log_path = format!(
+    //     "{}\\log",
+    //     data_path
+    // );
+    // let compress_path = format!(
+    //     "{}\\compress",
+    //     data_path
+    // );
 
-    let mut log_file = public_function::get_list_filename(&log_path[..]).await;
-    let mut compress_files = public_function::get_list_filename(&compress_path[..]).await;
-
-    log_file.append(&mut compress_files);
+    let mut log_file = public_function::get_list_filename(&partition_name).await;
+    // let mut compress_files = public_function::get_list_filename(&compress_path[..]).await;
+    // log_file.append(&mut compress_files);
 
     let mut file_vec = log_file
         .iter()

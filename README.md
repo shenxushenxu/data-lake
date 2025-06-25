@@ -69,7 +69,7 @@ cargo run --release -- masterip:masterprot
 # 开发者接口示例
 
 ## 创建表：
-{"sql":"create table table_name(id INT PRIMARY KEY, username string NOT NULL, age long, xingbie string default '男') partition_number = 4"}
+{"sql":"create table table_name(id INT PRIMARY KEY, username string NOT NULL, age long, xingbie string default '男') partition.number = 4, replicas.number=1"}
 ## 删除表
 {"sql":"drop table_name"}
 ## 批量插入数据：

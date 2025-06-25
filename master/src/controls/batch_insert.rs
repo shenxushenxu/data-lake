@@ -1,8 +1,6 @@
 use crate::controls::metadata::get_metadata;
 use entity_lib::entity::Error::DataLakeError;
-use entity_lib::entity::MasterEntity::{
-    BatchInsertTruth, ColumnConfigJudgment, DataType, SlaveBatchData, SlaveInsert, TableStructure,
-};
+use entity_lib::entity::MasterEntity::{BatchInsertTruth, ColumnConfigJudgment, DataType, Info, PartitionInfo, SlaveBatchData, SlaveInsert, TableStructure};
 use entity_lib::entity::SlaveEntity::SlaveMessage;
 use public_function::string_trait::StringFunction;
 use std::collections::HashMap;
@@ -10,24 +8,27 @@ use std::sync::LazyLock;
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
 use tokio::sync::Mutex;
+use public_function::PosttingTcpStream::DataLakeTcpStream;
 
-pub static INSERT_TCPSTREAM_CACHE_POOL: LazyLock<Mutex<HashMap<String, TcpStream>>> =
-    LazyLock::new(|| Mutex::new(HashMap::<String, TcpStream>::new()));
+pub static INSERT_TCPSTREAM_CACHE_POOL: LazyLock<Mutex<HashMap<String, DataLakeTcpStream>>> =
+    LazyLock::new(|| Mutex::new(HashMap::<String, DataLakeTcpStream>::new()));
+
+
 
 pub async fn batch_insert_data(
     mut batch_insert: BatchInsertTruth,
     uuid: &String,
 ) -> Result<(), DataLakeError> {
     let table_name = &batch_insert.table_name;
-    let table_structure = get_metadata(&table_name).await?;
+    let mut table_structure = get_metadata(&table_name).await?;
 
     let map_insert = batch_format_matching(&mut batch_insert, &table_structure, uuid).await?;
 
     for (key, list) in map_insert {
         let array = key.split("|=_=|").collect::<Vec<&str>>();
-        let address = &array[1];
-        let table_name = &array[2];
-        let partition_code = &array[3];
+        // let address = &array[1];
+        let table_name = &array[1];
+        let partition_code = &array[2];
 
         let slave_insert = SlaveInsert {
             table_name: table_name.to_string(),
@@ -44,7 +45,12 @@ pub async fn batch_insert_data(
         let tcp_stream = match map_guard.get_mut(&key) {
             Some(value) => value,
             None => {
-                let mut stream = TcpStream::connect(address).await?;
+                let code = partition_code.parse::<usize>()?;
+                let partition_address = &mut table_structure.partition_address;
+                let partition_info_vec = partition_address.get_mut(&code).unwrap();
+                
+                let mut stream = DataLakeTcpStream::connect(partition_info_vec).await?;
+                // let mut stream = TcpStream::connect("").await?;
                 map_guard.insert(key.clone(), stream);
                 let value = map_guard.get_mut(&key).unwrap();
                 value
@@ -52,7 +58,7 @@ pub async fn batch_insert_data(
         };
 
         tcp_stream.write_i32(bytes_len).await?;
-        tcp_stream.write(&bytes).await?;
+        tcp_stream.write_all(&bytes).await?;
     }
 
     return Ok(());
@@ -76,14 +82,15 @@ pub async fn batch_format_matching(
 
         type_verification(structure_col_type, batch_datum, table_name).await?;
 
-        let partition_address = &table_structure.partition_address;
         let major_key = &table_structure.major_key;
 
         let data_major_key = batch_datum.get(major_key).unwrap().clone();
 
         let partition_code = data_major_key.hash_code() as usize % table_structure.partition_number;
-        let par_addres = partition_address.get(&partition_code).unwrap();
-
+        
+        
+        
+        
         let data_json = serde_json::to_string(batch_datum)?;
         let ins = SlaveBatchData {
             major_key: data_major_key,
@@ -92,8 +99,8 @@ pub async fn batch_format_matching(
         };
 
         let tcp_key = format!(
-            "{}|=_=|{}|=_=|{}|=_=|{}",
-            uuid, &par_addres, &table_name, &partition_code
+            "{}|=_=|{}|=_=|{}",
+            uuid, &table_name, &partition_code
         );
 
         res_map.entry(tcp_key).or_insert(Vec::new()).push(ins);

@@ -4,31 +4,18 @@ use memmap2::Mmap;
 use public_function::SLAVE_CONFIG;
 use std::mem;
 use tokio::fs::OpenOptions;
-
-
-
-const INDEX_SIZE:usize = mem::size_of::<IndexStruct>();
+use entity_lib::entity::const_property::INDEX_SIZE;
 
 pub async fn stream_read(
     streamreadstruct: &StreamReadStruct,
 ) -> Result<Option<Vec<u8>>, DataLakeError> {
-    let log_path = format!(
-        "{}\\{}-{}\\log",
-        SLAVE_CONFIG.get("slave.data").unwrap(),
-        &streamreadstruct.table_name,
-        &streamreadstruct.partition_code
-    );
-    let compress_path = format!(
-        "{}\\{}-{}\\compress",
-        SLAVE_CONFIG.get("slave.data").unwrap(),
-        &streamreadstruct.table_name,
-        &streamreadstruct.partition_code
-    );
+    
+    let partition_name = format!("{}-{}",&streamreadstruct.table_name, &streamreadstruct.partition_code);
+    
+  
 
-    let mut log_files = public_function::get_list_filename(&log_path[..]).await;
-    let mut compress_files = public_function::get_list_filename(&compress_path[..]).await;
-
-    log_files.append(&mut compress_files);
+    let mut log_files = public_function::get_list_filename(&partition_name).await;
+   
 
     if log_files.len() == 0 {
         return Ok(None);
@@ -67,11 +54,12 @@ pub async fn stream_read(
     }
 }
 
-/*找到 offset 存在的索引文件*/
-async fn binary_search<'a>(file_vec: &'a Vec<&(String, String)>, offset: i64) -> Result<Option<&'a String>, DataLakeError> {
+
+/** 找到 offset 存在的索引文件 **/
+pub async fn binary_search<'a>(file_vec: &'a Vec<&(String, String)>, offset: i64) -> Result<Option<&'a String>, DataLakeError> {
 
     for index in 0..file_vec.len() {
-        let (this_index_name, this_index_path) = file_vec[index];
+        let (_, this_index_path) = file_vec[index];
 
         let mut index_file = OpenOptions::new()
             .read(true)
@@ -83,20 +71,21 @@ async fn binary_search<'a>(file_vec: &'a Vec<&(String, String)>, offset: i64) ->
         let mmap_len = index_mmap.len();
 
         let index_bytes = &index_mmap[(mmap_len - INDEX_SIZE)..mmap_len];
+        
         let Index_struct = bincode::deserialize::<IndexStruct>(index_bytes)?;
         let file_end_offset = Index_struct.offset;
-
 
         if file_end_offset >= offset {
             return Ok(Some(this_index_path));
         }
     }
-
     return Ok(None);
 }
 
-
-pub async fn find_data(index_path: &String, offset: i64, read_count: usize) -> Result<Option<Vec<u8>>, DataLakeError> {
+/**
+在索引文件内 通过二分查找   查找到 对应的offset
+**/
+async fn find_data(index_path: &String, offset: i64, read_count: usize) -> Result<Option<Vec<u8>>, DataLakeError> {
 
 
     let mut index_file = OpenOptions::new()

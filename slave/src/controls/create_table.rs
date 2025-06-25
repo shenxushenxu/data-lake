@@ -5,9 +5,16 @@ use entity_lib::entity::SlaveEntity::SlaveCreate;
 use public_function::SLAVE_CONFIG;
 
 pub async fn create_table_controls(create_message: SlaveCreate) -> Result<(), DataLakeError> {
+    
+    let slave_data = {
+        let mut slave_config = SLAVE_CONFIG.lock().await;
+        slave_config.get_slave_data().await
+    };
+    
+    
     let log_path = format!(
-        "{}\\{}\\{}",
-        SLAVE_CONFIG.get("slave.data").unwrap(),
+        "{}/{}/{}",
+        &slave_data,
         &create_message.tablename,
         "log"
     );
@@ -15,8 +22,8 @@ pub async fn create_table_controls(create_message: SlaveCreate) -> Result<(), Da
     tokio::fs::create_dir_all(log_path).await?; // 确保文件夹路径存在
 
     let compress_path = format!(
-        "{}\\{}\\{}",
-        SLAVE_CONFIG.get("slave.data").unwrap(),
+        "{}/{}/{}",
+        &slave_data,
         &create_message.tablename,
         "compress"
     );
@@ -24,8 +31,8 @@ pub async fn create_table_controls(create_message: SlaveCreate) -> Result<(), Da
     tokio::fs::create_dir_all(compress_path).await?; // 确保文件夹路径存在
 
     let partition_metadata = format!(
-        "{}\\{}\\{}",
-        SLAVE_CONFIG.get("slave.data").unwrap(),
+        "{}/{}/{}",
+        &slave_data,
         &create_message.tablename,
         "metadata.log"
     );
