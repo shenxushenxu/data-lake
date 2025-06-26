@@ -27,10 +27,10 @@ pub async fn follower_replicas_sync(replicas_sync_struct: &ReplicasSyncStruct) -
         .await?;
 
     let mut metadata_mmap = unsafe {MmapMut::map_mut(&metadata_file)?};
-    let max_offset = i64::from_be_bytes((&metadata_mmap[..]).try_into().unwrap());
+    let file_end_offset = i64::from_be_bytes((&metadata_mmap[..]).try_into().unwrap());
 
-    let file_end_offset = if max_offset == 0 { 0 } else { max_offset + 1 };
 
+    
     let sync_message = SyncMessage {
         offset: file_end_offset,
         partition_code: slave_parti_name.clone(),
@@ -82,7 +82,7 @@ pub async fn follower_replicas_sync(replicas_sync_struct: &ReplicasSyncStruct) -
             let return_end_offset = &offset_set[(offset_set_len - INDEX_SIZE)..offset_set_len ];
             let end_Index_struct = bincode::deserialize::<IndexStruct>(return_end_offset)?;
             
-            let end_offset = end_Index_struct.offset;
+            let end_offset = end_Index_struct.offset + 1;
             let dst_ptr = metadata_mmap.as_mut_ptr();
             
             let slice = end_offset.to_be_bytes();
