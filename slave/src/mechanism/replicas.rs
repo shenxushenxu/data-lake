@@ -98,14 +98,14 @@ pub async fn follower_replicas_sync(replicas_sync_struct: &ReplicasSyncStruct) -
 /**
 Leader副本向Follower同步的数据
 **/
-pub async fn Leader_replicas_sync(sync_message: &SyncMessage) -> Option<ReplicaseSyncData> {
+pub async fn Leader_replicas_sync(sync_message: &SyncMessage) -> Result<Option<ReplicaseSyncData>, DataLakeError> {
     let offset = sync_message.offset;
     let partition_code = &sync_message.partition_code;
 
     let mut log_files = public_function::get_list_filename(&partition_code).await;
 
     if log_files.len() == 0 {
-        return None;
+        return Ok(None);
     }
 
     let mut file_vec = log_files
@@ -127,25 +127,24 @@ pub async fn Leader_replicas_sync(sync_message: &SyncMessage) -> Option<Replicas
         return file_code.parse::<i64>().unwrap();
     });
 
-    let option_this_offset_file = binary_search(&file_vec, offset).await.unwrap();
+    let option_this_offset_file = binary_search(&file_vec, offset).await?;
 
     if let Some(this_offset_file) = option_this_offset_file {
-        if let Some(replicase_sync_data) = find_data(this_offset_file, offset).await {
-            return Some(replicase_sync_data);
+        if let Some(replicase_sync_data) = find_data(this_offset_file, offset).await? {
+            return Ok(Some(replicase_sync_data));
         }
     }
 
-    return None;
+    return Ok(None);
 }
 
-pub async fn find_data(index_path: &String, offset: i64) -> Option<ReplicaseSyncData> {
+pub async fn find_data(index_path: &String, offset: i64) -> Result<Option<ReplicaseSyncData>, DataLakeError> {
     let mut index_file = OpenOptions::new()
         .read(true)
         .open(index_path)
-        .await
-        .unwrap();
+        .await?;
 
-    let index_mmap = unsafe { Mmap::map(&index_file).unwrap() };
+    let index_mmap = unsafe { Mmap::map(&index_file)? };
 
     let index_file_len = index_mmap.len();
     let mut left = 0;
@@ -157,7 +156,7 @@ pub async fn find_data(index_path: &String, offset: i64) -> Option<ReplicaseSync
         let mid = left + (right - left) / 2;
         start_seek = mid * INDEX_SIZE;
         let bytes_mid = &index_mmap[start_seek..start_seek + INDEX_SIZE];
-        let data_mid = bincode::deserialize::<IndexStruct>(bytes_mid).unwrap();
+        let data_mid = bincode::deserialize::<IndexStruct>(bytes_mid)?;
 
         if data_mid.offset == offset {
             start_index = Some(data_mid);
@@ -170,7 +169,7 @@ pub async fn find_data(index_path: &String, offset: i64) -> Option<ReplicaseSync
     }
 
     if start_index.is_none() {
-        return None;
+        return Ok(None);
     }
 
     // 获得索引
@@ -181,9 +180,8 @@ pub async fn find_data(index_path: &String, offset: i64) -> Option<ReplicaseSync
     let mut snappy_file = OpenOptions::new()
         .read(true)
         .open(index_path.replace(".index", ".snappy"))
-        .await
-        .unwrap();
-    let snappy_file_mmap = unsafe { Mmap::map(&snappy_file).unwrap() };
+        .await?;
+    let snappy_file_mmap = unsafe { Mmap::map(&snappy_file)?};
     let data_set = &snappy_file_mmap[(data_start_seek as usize)..];
 
     let path = Path::new(index_path);
@@ -197,5 +195,5 @@ pub async fn find_data(index_path: &String, offset: i64) -> Option<ReplicaseSync
         index_code: index_code,
     };
 
-    return Some(replicase_sync_data);
+    return Ok(Some(replicase_sync_data));
 }

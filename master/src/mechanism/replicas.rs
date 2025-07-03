@@ -37,10 +37,9 @@ pub fn copy_sync_notif() -> JoinHandle<()> {
                     .unwrap();
 
                 let table_structure = tokio::task::spawn_blocking(move || {
-                    let mut mmap = unsafe { Mmap::map(&file) }.unwrap();
+                    let mmap = unsafe { Mmap::map(&file) }.unwrap();
                     let metadata_message = &mmap[..];
-                    let table_structure =
-                        bincode::deserialize::<TableStructure>(metadata_message).unwrap();
+                    let table_structure = bincode::deserialize::<TableStructure>(metadata_message).unwrap();
 
                     table_structure
                 })
@@ -100,7 +99,7 @@ pub fn copy_sync_notif() -> JoinHandle<()> {
                                     let mut mass = vec![0u8; mass_len as usize];
                                     follower_tcpstream.read_exact(&mut mass[..]).await.unwrap();
                                     let massage = std::str::from_utf8(&mass).unwrap();
-                                    panic!("{}", massage);
+                                    eprintln!("ERROR:  {}", massage);
                                 }
                             });
                         }

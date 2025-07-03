@@ -10,7 +10,7 @@ use crate::controls::stream_read::stream_read;
 use entity_lib::entity::Error::DataLakeError;
 use entity_lib::entity::MasterEntity::QueryItem;
 use entity_lib::entity::SlaveEntity::SlaveMessage::drop_table;
-use entity_lib::entity::SlaveEntity::{QueryMessage, SlaveMessage};
+use entity_lib::entity::SlaveEntity::{QueryMessage, ReplicaseSyncData, SlaveMessage};
 use log::{error, info};
 use public_function::{load_properties, SlaveConfig, SLAVE_CONFIG};
 use std::path;
@@ -211,15 +211,25 @@ fn data_read_write() -> JoinHandle<()> {
                                 SlaveMessage::leader_replicas_sync(sync_message) => {
 
                                     let replicase_sync_data = Leader_replicas_sync(&sync_message).await;
-                                    if let Some(replicase_sync) = replicase_sync_data {
-                                        let mess_bytes = bincode::serialize(&replicase_sync).unwrap();
-                                        let bytes_len = mess_bytes.len() as i32;
+                                    
+                                    match replicase_sync_data {
+                                        Ok(sync_data) => {
+                                            if let Some(replicase_sync) = sync_data {
+                                                let mess_bytes = bincode::serialize(&replicase_sync).unwrap();
+                                                let bytes_len = mess_bytes.len() as i32;
 
-                                        write.write_i32(bytes_len).await.unwrap();
-                                        write.write_all(&mess_bytes).await.unwrap();
-                                    }else {
-                                        write.write_i32(-1).await.unwrap();
+                                                write.write_i32(bytes_len).await.unwrap();
+                                                write.write_all(&mess_bytes).await.unwrap();
+                                            }else {
+                                                write.write_i32(-1).await.unwrap();
+                                            }
+                                        }
+                                        Err(e) => {
+                                            public_function::write_error(e, &mut write).await;
+                                        }
                                     }
+                                    
+                                    
                                 }
                             }
                         }
