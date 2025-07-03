@@ -55,11 +55,11 @@ DataLakeDB 是一款使用RUST实现的分布式数据库系统，专为海量�
 使用 rust >= 1.85.0 
 ## 启动主节点
 在master文件夹下执行： 
-cargo run --release
+cargo run --release -- ${data-lake_path}/config/mester_config.properties
 
 ## 启动从节点
 在slave文件夹下执行：
-cargo run --release
+cargo run --release -- ${data-lake_path}/config/slave_config.properties
 
 ## 连接客户端
 在data-lake-client文件夹下执行：
@@ -85,9 +85,9 @@ cargo run --release -- masterip:masterprot
 
 ## 消费表内的数据：
 ### 从头开始消费：
-{"stream_read":{"patition_mess":[],"table_name":"test_table","read_count":1000}}
+{"stream_read":{"patition_mess":[],"table_name":"table_name","read_count":1000}}
 ### 指定从指定的offset处开始消费：
-{"stream_read":{"patition_mess":[{"patition_code":0,"offset":249991},{"patition_code":1,"offset":249991},{"patition_code":2,"offset":249991},{"patition_code":3,"offset":249991}],"table_name":"test_table","read_count":1000}}
+{"stream_read":{"patition_mess":[{"patition_code":0,"offset":249991},{"patition_code":1,"offset":249991},{"patition_code":2,"offset":249991},{"patition_code":3,"offset":249991}],"table_name":"table_name","read_count":1000}}
 
 
 # 高级功能
