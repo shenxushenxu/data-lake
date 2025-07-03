@@ -70,7 +70,6 @@ pub async fn alter_add(
     let key_words_1 = alteradd.3;
     let key_words_2 = alteradd.4;
 
-
     let mut tablestruct = get_metadata(&table_name).await?;
 
 

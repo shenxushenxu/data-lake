@@ -48,7 +48,7 @@ impl StringFunction for String{
             let char_value = c as i32;
             hash = hash.wrapping_mul(multiplier).wrapping_add(char_value);
         }
-        return hash;
+        return hash.abs();
     }
     fn process_string(&self) -> String {
         let mut result = String::with_capacity(self.len());

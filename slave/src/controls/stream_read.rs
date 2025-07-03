@@ -1,12 +1,72 @@
+use std::collections::HashMap;
 use entity_lib::entity::Error::DataLakeError;
-use entity_lib::entity::SlaveEntity::{IndexStruct, StreamReadStruct};
+use entity_lib::entity::SlaveEntity::{DataStructure, IndexStruct, StreamReadStruct};
 use memmap2::Mmap;
-use public_function::SLAVE_CONFIG;
+use public_function::{data_complete, SLAVE_CONFIG};
 use std::mem;
+use snap::raw::{Decoder, Encoder};
 use tokio::fs::OpenOptions;
 use entity_lib::entity::const_property::INDEX_SIZE;
+use entity_lib::entity::MasterEntity::{ColumnConfigJudgment, DataType};
+use public_function::read_function::ArrayBytesReader;
 
-pub async fn stream_read(
+pub async fn stream_read(streamreadstruct: &StreamReadStruct) -> Result<Option<Vec<u8>>, DataLakeError> {
+    let stream_return = data_read(streamreadstruct).await;
+    let col_type = &streamreadstruct.table_col_type;
+    match stream_return {
+        Ok(stream_message) => match stream_message {
+            None => {
+                return Ok(None);
+            }
+            Some(stream_me) => {
+
+                let mut vec_datastructure = Vec::<DataStructure>::new();
+                
+                let mut arraybytesreader = ArrayBytesReader::new(stream_me.as_slice());
+                loop {
+                    if arraybytesreader.is_stop() {
+                        break;
+                    }
+                
+                    let mess_len = arraybytesreader.read_i32();
+                    let mess = arraybytesreader.read_exact(mess_len as usize);
+                
+                    let mut decoder = Decoder::new();
+                    let message_bytes = decoder
+                        .decompress_vec(mess)
+                        .unwrap_or_else(|e| panic!("解压失败: {}", e));
+                    let message = String::from_utf8(message_bytes)?;
+                    let mut datastructure =
+                        serde_json::from_str::<DataStructure>(&message)?;
+                    let data = &mut datastructure.data;
+                
+                    
+                
+                    // 补全\验证  数据
+                    data_complete(col_type, data).await;
+                
+                    vec_datastructure.push(datastructure);
+                }
+                
+                let vec_string = serde_json::to_string(&vec_datastructure)?;
+                
+                let mut encoder = Encoder::new();
+                let compressed_data = encoder.compress_vec(vec_string.as_bytes())?;
+                
+                return Ok(Some(compressed_data));
+            }
+        },
+        Err(e) => {
+            return Err(e);
+        }
+    };
+    
+    
+    
+}
+
+
+pub async fn data_read(
     streamreadstruct: &StreamReadStruct,
 ) -> Result<Option<Vec<u8>>, DataLakeError> {
     

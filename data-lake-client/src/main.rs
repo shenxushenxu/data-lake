@@ -5,7 +5,7 @@ use std::{env, io};
 use snap::raw::{Decoder, Encoder};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
-use entity_lib::entity::MasterEntity::{BatchInsert, Statement};
+use entity_lib::entity::MasterEntity::{BatchInsert, Statement, TableStructure};
 use crate::controls::stream_read_logic::Consumer;
 use crate::entity::ClientStatement;
 
@@ -63,7 +63,15 @@ async fn main() {
                         stream.read_exact(&mut mess).await.unwrap();
 
                         println!("{}", String::from_utf8(mess).unwrap());
-                    }else {
+                    }else if mess_len == -3{
+                        let table_structure_len = stream.read_i32().await.unwrap();
+                        let mut table_structure = vec![0; table_structure_len as usize];
+                        stream.read_exact(&mut table_structure).await.unwrap();
+                        let tablestructure = serde_json::from_slice::<TableStructure>(&table_structure).unwrap();
+                        
+                        println!("{:?}", tablestructure)
+                        
+                    } else {
                         let mut mess = vec![0; mess_len as usize];
                         stream.read_exact(&mut mess).await.unwrap();
 
@@ -72,8 +80,7 @@ async fn main() {
                             .decompress_vec(&mess)
                             .unwrap_or_else(|e| panic!("解压失败: {}", e));
 
-                        let data_vec =
-                            serde_json::from_slice::<Vec<String>>(&message_bytes).unwrap();
+                        let data_vec = serde_json::from_slice::<Vec<String>>(&message_bytes).unwrap();
                         for data in data_vec.iter() {
                             println!("||  {}",data);
                         }
@@ -103,6 +110,7 @@ async fn main() {
 
                 let table_name = batch_insert.table_name;
                 let hash_data = batch_insert.data;
+                let partition_code = batch_insert.partition_code;
 
                 let data_str = serde_json::to_string(&hash_data).unwrap();
 
@@ -112,6 +120,7 @@ async fn main() {
                 let batchinsert = BatchInsert{
                     table_name: table_name,
                     data: compressed_data,
+                    partition_code: partition_code
                 };
 
                 let state = Statement::batch_insert(batchinsert);

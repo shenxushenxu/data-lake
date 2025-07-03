@@ -60,11 +60,11 @@ pub async fn data_duplicate_removal(file_vec: Vec<String>, uuid:&String) -> Resu
                     let message_str = std::str::from_utf8(&message_bytes)?;
                     let data_structure = serde_json::from_str::<DataStructure>(message_str)?;
 
-                    let major_key = &data_structure.major_key;
+                    let major_value = &data_structure.major_value;
                     let crud_type = &data_structure._crud_type;
                     let offset = &data_structure.offset;
 
-                    match res_map.get(major_key) {
+                    match res_map.get(major_value) {
                         Some((position, len)) => match crud_type.as_str() {
                             "insert" => {
 
@@ -82,7 +82,7 @@ pub async fn data_duplicate_removal(file_vec: Vec<String>, uuid:&String) -> Resu
 
                                     temp_file.write_all(data_bytes.as_slice()).await?;
 
-                                    res_map.insert(major_key.clone(), (data_position as usize, data_len));
+                                    res_map.insert(major_value.clone(), (data_position as usize, data_len));
                                 } else {
                                     return Err(DataLakeError::CustomError(
                                         "奶奶的，offset出毛病了".to_string(),
@@ -90,7 +90,7 @@ pub async fn data_duplicate_removal(file_vec: Vec<String>, uuid:&String) -> Resu
                                 }
                             }
                             "delete" => {
-                                res_map.remove(major_key);
+                                res_map.remove(major_value);
                             }
                             _ => {
                                 return Err(DataLakeError::CustomError(format!(
@@ -107,10 +107,10 @@ pub async fn data_duplicate_removal(file_vec: Vec<String>, uuid:&String) -> Resu
                                 let data_len = data_bytes.len();
                                 temp_file.write_all(data_bytes.as_slice()).await?;
 
-                                res_map.insert(major_key.clone(), (data_position as usize, data_len));
+                                res_map.insert(major_value.clone(), (data_position as usize, data_len));
                             }
                             "delete" => {
-                                res_map.remove(major_key);
+                                res_map.remove(major_value);
                             }
                             _ => {
                                 return Err(DataLakeError::CustomError(format!(

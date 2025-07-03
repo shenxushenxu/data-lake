@@ -6,7 +6,7 @@ use std::sync::Arc;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use entity_lib::entity::MasterEntity::{Info, PartitionInfo};
-use crate::controls::stream_read::data_complete;
+use public_function::data_complete;
 
 pub async fn query_daql(query_message: QueryMessage) -> Result<Option<Vec<String>>, DataLakeError> {
     let table_name = &query_message.tablename;
@@ -76,8 +76,10 @@ pub async fn query_daql(query_message: QueryMessage) -> Result<Option<Vec<String
                                 for st in data{
                                     let mut data_map = serde_json::from_str::<HashMap<String, String>>(st.as_str())?;
                                     let col_type = &clone_arc_table_structure.col_type;
-                                    let complete_map = data_complete(col_type, &mut data_map).await;
-                                    let json_str = serde_json::to_string(complete_map)?;
+                                    
+                                    // 补全默认值的数据
+                                    data_complete(col_type, &mut data_map).await;
+                                    let json_str = serde_json::to_string(&data_map)?;
 
                                     data_vec.push(json_str);
                                 }

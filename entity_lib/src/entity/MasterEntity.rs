@@ -67,14 +67,16 @@ pub struct SlaveBatchData{
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct SlaveInsert {
     pub table_name: String,
-    pub data: Vec<SlaveBatchData>,
+    pub data: Vec<HashMap<String, String>>,
     pub partition_code: String,
+    pub table_structure: TableStructure
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct BatchInsertTruth {
     pub table_name: String,
     pub data: Vec<HashMap<String, String>>,
+    pub partition_code: Option<String>,
 }
 
 /**
@@ -84,6 +86,8 @@ pub struct BatchInsertTruth {
 pub struct BatchInsert{
     pub table_name: String,
     pub data: Vec<u8>,
+    // 批量插入数据指定的分区号可以为None
+    pub partition_code: Option<String>,
 }
 
 /**

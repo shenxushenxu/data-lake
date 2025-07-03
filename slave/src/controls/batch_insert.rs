@@ -1,10 +1,12 @@
+use std::collections::HashMap;
 use std::io::SeekFrom;
 use memmap2::MmapMut;
 use snap::raw::Encoder;
 use tokio::fs::OpenOptions;
 use tokio::io::{AsyncSeekExt, AsyncWriteExt};
+use entity_lib::entity::const_property::{CRUD_TYPE, DATA_FILE_EXTENSION, INDEX_FILE_EXTENSION, LOG_FILE, METADATA_LOG};
 use entity_lib::entity::Error::DataLakeError;
-use entity_lib::entity::MasterEntity::{BatchInsert, Insert, SlaveInsert};
+use entity_lib::entity::MasterEntity::{ColumnConfigJudgment, DataType, SlaveInsert, TableStructure};
 use entity_lib::entity::SlaveEntity::{DataStructure, IndexStruct, SlaveCacheStruct};
 use public_function::read_function::get_slave_path;
 use public_function::SLAVE_CONFIG;
@@ -19,94 +21,100 @@ pub async  fn batch_insert_data(batch_insert: SlaveInsert) -> Result<(), DataLak
 
 pub async fn insert_operation(batch_insert: &SlaveInsert) -> Result<(), DataLakeError> {
 
-    let mut mutex_map= FILE_CACHE_POOL.lock().await;
 
     let mut offset_init = None;
 
     let table_name = &batch_insert.table_name;
     let partition_code = &batch_insert.partition_code;
-    let batch_insert = &batch_insert.data;
+    let batch_insert_data = &batch_insert.data;
+    let table_structure = &batch_insert.table_structure;
+    let major_key = &table_structure.major_key;
+    
     let file_key = format!("{}-{}", table_name, partition_code);
 
+    let mut mutex_map= FILE_CACHE_POOL.lock().await;
 
-    for insert in batch_insert.iter() {
-
-
-        let crud_type = &insert._crud_type;
-        let data = &insert.data;
-        let major_key = &insert.major_key;
-
-        let slave_cache_struct = match mutex_map.get_mut(&file_key) {
-            Some(slave_cache_struct) => {
-                slave_cache_struct
-            }
-            None => {
-                // 插入数据的缓存中，没有插入的文件对象
-                let partition_name = format!("{}-{}", table_name, &partition_code);
-                let partition_path = get_slave_path(&partition_name).await?;
-                
-                let metadata_file_path = format!(
-                    "{}/{}",
-                    partition_path,
-                    "metadata.log"
-                );
-
-                let mut metadata_file = OpenOptions::new()
-                    .read(true)
-                    .write(true)
-                    .create(true)
-                    .open(metadata_file_path)
-                    .await?;
-                let mut metadata_mmap = unsafe {MmapMut::map_mut(&metadata_file)?};
+    for insert_single in batch_insert_data.iter() {
 
 
-                let offset_file_name = match offset_init{
-                    Some(offset) => {
-                        offset
-                    }
-                    None => {
-                        i64::from_be_bytes((&metadata_mmap[..]).try_into().unwrap())
-                    }
-                };
+        batch_format_matching(insert_single, table_structure).await?;
+
+        let slave_cache_struct = {
+            
+            match mutex_map.get_mut(&file_key) {
+                Some(slave_cache_struct) => {
+                    slave_cache_struct
+                }
+                None => {
+                    // 插入数据的缓存中，没有插入的文件对象
+                    let partition_name = format!("{}-{}", table_name, &partition_code);
+                    let partition_path = get_slave_path(&partition_name).await?;
+
+                    let metadata_file_path = format!(
+                        "{}/{}",
+                        partition_path,
+                        METADATA_LOG
+                    );
+
+                    let mut metadata_file = OpenOptions::new()
+                        .read(true)
+                        .write(true)
+                        .create(true)
+                        .open(metadata_file_path)
+                        .await?;
+                    let mut metadata_mmap = unsafe {MmapMut::map_mut(&metadata_file)?};
 
 
-                let log_file_path = format!(
-                    "{}/{}/{}.snappy",
-                    partition_path,
-                    "log",
-                    offset_file_name
-                );
-                let index_file_path = format!(
-                    "{}/{}/{}.index",
-                    partition_path,
-                    "log",
-                    offset_file_name
-                );
+                    let offset_file_name = match offset_init{
+                        Some(offset) => {
+                            offset
+                        }
+                        None => {
+                            i64::from_be_bytes((&metadata_mmap[..]).try_into().unwrap())
+                        }
+                    };
 
-                let mut log_file = OpenOptions::new()
-                    .write(true)
-                    .create(true)
-                    .append(true)
-                    .open(log_file_path)
-                    .await?;
 
-                let mut index_file = OpenOptions::new()
-                    .write(true)
-                    .create(true)
-                    .append(true)
-                    .open(index_file_path)
-                    .await?;
+                    let log_file_path = format!(
+                        "{}/{}/{}{}",
+                        partition_path,
+                        LOG_FILE,
+                        offset_file_name,
+                        DATA_FILE_EXTENSION
+                    );
+                    let index_file_path = format!(
+                        "{}/{}/{}{}",
+                        partition_path,
+                        LOG_FILE,
+                        offset_file_name,
+                        INDEX_FILE_EXTENSION
+                    );
 
-                let slave_cache_struct = SlaveCacheStruct {
-                    data_file: log_file,
-                    index_file: index_file,
-                    metadata_file: metadata_file,
-                    metadata_mmap: metadata_mmap,
-                };
+                    let mut log_file = OpenOptions::new()
+                        .write(true)
+                        .create(true)
+                        .append(true)
+                        .open(log_file_path)
+                        .await?;
 
-                mutex_map.insert(file_key.clone(), slave_cache_struct);
+                    let mut index_file = OpenOptions::new()
+                        .write(true)
+                        .create(true)
+                        .append(true)
+                        .open(index_file_path)
+                        .await?;
 
-                mutex_map.get_mut(&file_key).unwrap()
+                    let slave_cache_struct = SlaveCacheStruct {
+                        data_file: log_file,
+                        index_file: index_file,
+                        metadata_file: metadata_file,
+                        metadata_mmap: metadata_mmap,
+                    };
+
+                    mutex_map.insert(file_key.clone(), slave_cache_struct);
+
+                    mutex_map.get_mut(&file_key).unwrap()
+                }
             }
         };
 
@@ -125,21 +133,22 @@ pub async fn insert_operation(batch_insert: &SlaveInsert) -> Result<(), DataLake
                 i64::from_be_bytes((&metadata_mmap[..]).try_into().unwrap())
             }
         };
-
-
-
+        
         let start_seek = data_file.seek(SeekFrom::End(0)).await?;
 
-
+        let major_value = insert_single.get(major_key).unwrap();
+        let crud_type = insert_single.get(CRUD_TYPE).unwrap();
+        
         let data = DataStructure {
             table_name: table_name.clone(),
-            major_key: major_key.clone(),
-            data: data.clone(),
+            major_value: major_value.clone(),
+            data: insert_single.clone(),
             _crud_type: crud_type.clone(),
             partition_code: partition_code.clone(),
             offset: offset,
         };
-
+        
+        
         let json_value = serde_json::to_string(&data)?;
         let mut encoder = Encoder::new();
         let compressed_data = encoder.compress_vec(json_value.as_bytes())?;
@@ -198,4 +207,137 @@ pub async fn insert_operation(batch_insert: &SlaveInsert) -> Result<(), DataLake
 
     return Ok(());
 
+}
+
+
+
+
+/**
+数据验证，查看数据是否符合 元数据的格式
+**/
+pub async fn batch_format_matching(
+    insert_single: &HashMap<String, String>,
+    table_structure: &TableStructure
+) -> Result<(), DataLakeError> {
+
+    
+
+    let structure_col_type = &table_structure.col_type;
+    let table_name = &table_structure.table_name;
+    
+    type_verification(structure_col_type, insert_single, table_name).await?;
+
+
+        
+    
+
+    return Ok(());
+}
+
+pub async fn type_verification(
+    metadata_col_type: &HashMap<String, (DataType, ColumnConfigJudgment, Option<String>)>,
+    insert_data: &HashMap<String, String>,
+    table_name: &String,
+) -> Result<(), DataLakeError> {
+    for (col_name, value) in insert_data.iter() {
+        match metadata_col_type.get(col_name) {
+            Some((data_type, column_conf_judg, _)) => {
+                // 验证类型是否匹配
+                verification_type(col_name, value, data_type)?;
+                //验证属性配置是否匹配
+                conf_verification(col_name, value, column_conf_judg)?;
+            }
+            None => {
+                
+                if col_name != CRUD_TYPE {
+                    return Err(DataLakeError::CustomError(format!(
+                        "{} 表内不存在 {} 列",
+                        table_name, col_name
+                    )));
+                }
+            }
+        }
+    }
+
+    return Ok(());
+}
+
+fn conf_verification(
+    col_name: &String,
+    col_value: &String,
+    column_conf_judg: &ColumnConfigJudgment,
+) -> Result<(), DataLakeError> {
+    match column_conf_judg {
+        ColumnConfigJudgment::PRIMARY_KEY => {
+            if col_value.trim().is_empty() {
+                return Err(DataLakeError::CustomError(format!("{} 列为 空", col_name)));
+            }
+        }
+        ColumnConfigJudgment::NOT_NULL => {
+            if col_value.trim().is_empty() {
+                return Err(DataLakeError::CustomError(format!("{} 列为 空", col_name)));
+            }
+        }
+        _ => {}
+    }
+
+    return Ok(());
+}
+/**
+检查插入数据的 类型是否和 表元数据匹配
+**/
+fn verification_type(
+    col_name: &String,
+    col_value: &String,
+    data_type: &DataType,
+) -> Result<(), DataLakeError> {
+    match data_type {
+        DataType::string => {
+            col_value.to_string();
+        }
+        DataType::int => match col_value.parse::<i32>() {
+            Ok(_) => {}
+            Err(e) => {
+                return Err(DataLakeError::CustomError(format!(
+                    "{} 列转换为 int 失败，检查插入的数据: {}",
+                    col_name, col_value
+                )));
+            }
+        },
+        DataType::float => match col_value.parse::<f32>() {
+            Ok(_) => {}
+            Err(_) => {
+                return Err(DataLakeError::CustomError(format!(
+                    "{} 列转换为 float 失败，检查插入的数据: {}",
+                    col_name, col_value
+                )));
+            }
+        },
+        DataType::boolean => match col_value.parse::<bool>() {
+            Ok(_) => {}
+            Err(_) => {
+                return Err(DataLakeError::CustomError(format!(
+                    "{} 列转换为 bool 失败，检查插入的数据: {}",
+                    col_name, col_value
+                )));
+            }
+        },
+        DataType::long => match col_value.parse::<i64>() {
+            Ok(_) => {}
+            Err(_) => {
+                return Err(DataLakeError::CustomError(format!(
+                    "{} 列转换为 bool 失败，检查插入的数据: {}",
+                    col_name, col_value
+                )));
+            }
+        },
+        _ => {
+            return Err(DataLakeError::CustomError(format!(
+                "{}  不符合任何数据类型",
+                col_name
+            )));
+        }
+    }
+
+    return Ok(());
 }

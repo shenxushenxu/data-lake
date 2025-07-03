@@ -1,10 +1,7 @@
 use crate::controls::metadata::get_metadata;
 use entity_lib::entity::Error::DataLakeError;
-use entity_lib::entity::MasterEntity::{ColumnConfigJudgment, DataType, Info, MasterStreamRead, Parti, PartitionInfo, TableStructure};
-use entity_lib::entity::SlaveEntity::{DataStructure, SlaveMessage, StreamReadStruct};
-use public_function::read_function::ArrayBytesReader;
-use snap::raw::{Decoder, Encoder};
-use std::array;
+use entity_lib::entity::MasterEntity::{Info, MasterStreamRead, Parti, PartitionInfo, TableStructure};
+use entity_lib::entity::SlaveEntity::{SlaveMessage, StreamReadStruct};
 use std::collections::HashMap;
 use std::sync::{Arc, LazyLock};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -21,7 +18,7 @@ pub async fn stream_read_data(
     uuid: &String,
 ) -> Result<Receiver<Option<Vec<u8>>>, DataLakeError> {
     let table_name = masterstreamread.table_name;
-    let read_count = &masterstreamread.read_count;
+    let read_count = masterstreamread.read_count;
     let table_structure = get_metadata(&table_name).await?;
 
     let address_map = &table_structure.partition_address;
@@ -40,18 +37,15 @@ pub async fn stream_read_data(
         }
     }
 
+    let ta_na = Arc::new(table_name);
+    
     for parti in patiti_vec.iter() {
-        let partition_code = &parti.patition_code;
+        let partition_code = parti.patition_code;
         let offset = parti.offset;
 
         let partition_info_vec = address_map.get(&partition_code).unwrap();
 
-        let stream_read = StreamReadStruct {
-            table_name: table_name.clone(),
-            partition_code: partition_code.clone(),
-            offset: offset,
-            read_count: read_count.clone(),
-        };
+     
 
         let sen = sender.clone();
 
@@ -67,25 +61,38 @@ pub async fn stream_read_data(
             }
         }).collect::<Vec<&PartitionInfo>>()[0].clone();
 
-        let map_key = format!("{}_{}", uuid, &table_name);
+        let table_name_clone = table_structure.table_name.clone();
 
-        let ta_na = Arc::new(table_name.clone());
+        let arc_ta_name = Arc::clone(&ta_na);
+
+        let map_key = format!("{}_{}", uuid, arc_ta_name.as_ref());
+        
         tokio::spawn(async move {
             
             let mut stream_map = STREAM_TCP_TABLESTRUCTURE.lock().await;
-            let (stream, tablestructure) = match stream_map.get_mut(&map_key[..]) {
+            let (stream, tablestructure) = match stream_map.get_mut(&map_key) {
                 Some(stream) => stream,
                 None => {
                     let address = &partition_info.address;
                     let mut stream = TcpStream::connect(address).await?;
-                    let bb = ta_na.clone();
 
-                    let tablestructure = get_metadata(bb.as_ref()).await?;
+                    
+                    let tablestructure = get_metadata(arc_ta_name.as_ref()).await?;
                     stream_map.insert(map_key.clone(), (stream, tablestructure));
 
                     stream_map.get_mut(&map_key).unwrap()
                 }
             };
+            let col_type = tablestructure.col_type.clone();
+
+            let stream_read = StreamReadStruct {
+                table_name: table_name_clone,
+                partition_code: partition_code.clone(),
+                offset: offset,
+                read_count: read_count.clone(),
+                table_col_type: col_type.clone(),
+            };
+            
             let salve_message = SlaveMessage::stream_read(stream_read);
 
             let message_bytes = bincode::serialize(&salve_message)?;
@@ -106,46 +113,10 @@ pub async fn stream_read_data(
                         let dd = String::from_utf8(mess)?;
                         return Err(DataLakeError::CustomError(dd));
                     } else {
-                        let mut me = vec![0u8; read_count as usize];
-                        stream.read_exact(&mut me).await?;
+                        let mut message = vec![0u8; read_count as usize];
+                        stream.read_exact(&mut message).await?;
 
-                        let mut vec_datastructure = Vec::<DataStructure>::new();
-
-                        let mut arraybytesreader = ArrayBytesReader::new(me.as_slice());
-                        loop {
-                            if arraybytesreader.is_stop() {
-                                break;
-                            }
-
-                            let mess_len = arraybytesreader.read_i32();
-                            let mess = arraybytesreader.read_exact(mess_len as usize);
-
-                            let mut decoder = Decoder::new();
-                            let message_bytes = decoder
-                                .decompress_vec(mess)
-                                .unwrap_or_else(|e| panic!("解压失败: {}", e));
-                            let message = String::from_utf8(message_bytes)?;
-                            let mut datastructure =
-                                serde_json::from_str::<DataStructure>(&message)?;
-                            let mut data = serde_json::from_str::<HashMap<String, String>>(
-                                &datastructure.data,
-                            )?;
-
-                            let col_type = &tablestructure.col_type;
-
-                            // 补全\验证  数据
-                            let complete_map = data_complete(col_type, &mut data).await;
-
-                            datastructure.data = serde_json::to_string(&complete_map)?;
-                            vec_datastructure.push(datastructure);
-                        }
-
-                        let vec_string = serde_json::to_string(&vec_datastructure)?;
-
-                        let mut encoder = Encoder::new();
-                        let compressed_data = encoder.compress_vec(vec_string.as_bytes())?;
-
-                        if let Err(e) = sen.send(Some(compressed_data)).await {
+                        if let Err(e) = sen.send(Some(message)).await {
                             println!("Error sending message: {:?}", e);
                         }
                     }
@@ -162,33 +133,3 @@ pub async fn stream_read_data(
     return Ok(receiver);
 }
 
-pub async fn data_complete<'a>(
-    col_type: &HashMap<String, (DataType, ColumnConfigJudgment, Option<String>)>,
-    data: &'a mut HashMap<String, String>,
-) -> &'a HashMap<String, String>{
-    let mut insert_map = HashMap::<String, String>::new();
-    for (key, value) in col_type.iter() {
-        match data.get(key) {
-            None => {
-                insert_map.insert(key.clone(), String::from(""));
-            }
-            Some(data_value) => {
-                if data_value.is_empty() {
-                    let column_configh_judgment = &value.1;
-                    if let ColumnConfigJudgment::DEFAULT = column_configh_judgment {
-                        let default_option = &value.2;
-                        if let Some(default_value) = default_option {
-                            insert_map.insert(key.clone(), default_value.clone());
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    for (k, v) in insert_map.into_iter() {
-        data.insert(k, v);
-    }
-
-    return data;
-}

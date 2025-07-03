@@ -10,4 +10,3 @@ serde_json = { workspace = true }
 snap = {workspace = true}
 
 entity_lib = {path = "../entity_lib"}
-public_function = {path = "../public_function"}

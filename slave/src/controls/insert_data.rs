@@ -6,6 +6,8 @@ use snap::raw::Encoder;
 use tokio::fs::OpenOptions;
 use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 use tokio::sync::Mutex;
+use entity_lib::entity::const_property::{DATA_FILE_EXTENSION, INDEX_FILE_EXTENSION, LOG_FILE, METADATA_LOG};
+use entity_lib::entity::DaqlEntity::DaqlType::COMPRESS_TABLE;
 use entity_lib::entity::Error::DataLakeError;
 use entity_lib::entity::MasterEntity::Insert;
 use entity_lib::entity::SlaveEntity::{DataStructure, IndexStruct, SlaveCacheStruct};
@@ -25,7 +27,7 @@ pub async fn insert_operation(insert: Insert) -> Result<(), DataLakeError>{
     let table_name = insert.table_name;
     let partition_code = insert.partition_code;
     let crud_type = insert._crud_type;
-    let data = insert.data;
+    let data = HashMap::new();
     let major_key = insert.major_key;
 
     let file_key = format!("{}-{}", table_name, partition_code);
@@ -46,7 +48,7 @@ pub async fn insert_operation(insert: Insert) -> Result<(), DataLakeError>{
             let metadata_file_path = format!(
                 "{}/{}",
                 data_path,
-                "metadata.log"
+                METADATA_LOG
             );
 
             let mut metadata_file = OpenOptions::new()
@@ -63,16 +65,18 @@ pub async fn insert_operation(insert: Insert) -> Result<(), DataLakeError>{
 
 
             let log_file_path = format!(
-                "{}/{}/{}.snappy",
+                "{}/{}/{}{}",
                 data_path,
-                "log",
-                offset
+                LOG_FILE,
+                offset,
+                DATA_FILE_EXTENSION
             );
             let index_file_path = format!(
-                "{}/{}/{}.index",
+                "{}/{}/{}{}",
                 data_path,
-                "log",
-                offset
+                LOG_FILE,
+                offset,
+                INDEX_FILE_EXTENSION
             );
 
             let mut log_file = OpenOptions::new()
@@ -115,7 +119,7 @@ pub async fn insert_operation(insert: Insert) -> Result<(), DataLakeError>{
 
     let data = DataStructure {
         table_name: table_name,
-        major_key: major_key,
+        major_value: major_key,
         data: data,
         _crud_type: crud_type,
         partition_code: partition_code,

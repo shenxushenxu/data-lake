@@ -17,9 +17,10 @@ use entity_lib::entity::MasterEntity::{BatchInsertTruth, Statement};
 use log::{error, info};
 use public_function::{MASTER_CONFIG, MasterConfig, load_properties, write_error};
 use serde_json::json;
-use snap::raw::Decoder;
+use snap::raw::{Decoder, Encoder};
 use std::any::Any;
 use std::collections::HashMap;
+use std::sync::Arc;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
 use tokio::sync::Mutex;
@@ -85,6 +86,7 @@ fn data_interface() -> JoinHandle<()> {
 
             tokio::spawn(async move {
                 let uuid = Uuid::new_v4().to_string();
+                let uuid_arc = Arc::new(uuid);
 
                 let (mut read, mut write) = tcp_stream.split();
 
@@ -101,6 +103,7 @@ fn data_interface() -> JoinHandle<()> {
 
                             match statement {
                                 Statement::sql(daql) => match daql_analysis_function(&daql).await {
+                                    
                                     Ok(daqltype) => match daqltype {
                                         DaqlType::CREATE_TABLE(tablestructure) => {
                                             match create_table(tablestructure).await {
@@ -162,15 +165,15 @@ fn data_interface() -> JoinHandle<()> {
                                             match metadata_return {
                                                 Ok(table_structure) => {
                                                     let metadtat_message =
-                                                        serde_json::to_string(&table_structure)
-                                                            .unwrap();
+                                                        serde_json::to_string(&table_structure).unwrap();
                                                     let byt = metadtat_message.as_bytes();
-
+                                                    
                                                     let write_len = byt.len();
                                                     let write_message = byt;
-
-                                                    write
-                                                        .write_i32(write_len as i32)
+                                                    
+                                                    write.write_i32(-3).await.unwrap();
+                                                    
+                                                    write.write_i32(write_len as i32)
                                                         .await
                                                         .unwrap();
                                                     write.write_all(write_message).await.unwrap();
@@ -212,7 +215,7 @@ fn data_interface() -> JoinHandle<()> {
                                     }
                                 },
                                 Statement::stream_read(stream_read) => {
-                                    let stream_return = stream_read_data(stream_read, &uuid).await;
+                                    let stream_return = stream_read_data(stream_read, uuid_arc.as_ref()).await;
 
                                     match stream_return {
                                         Ok(mut receiver) => {
@@ -236,6 +239,7 @@ fn data_interface() -> JoinHandle<()> {
                                 Statement::batch_insert(batch_insert) => {
                                     let data = &batch_insert.data;
                                     let table_name = batch_insert.table_name;
+                                    let partition_code = batch_insert.partition_code;
 
                                     let mut decoder = Decoder::new();
                                     let message_bytes = decoder
@@ -250,10 +254,13 @@ fn data_interface() -> JoinHandle<()> {
                                     let batch = BatchInsertTruth {
                                         table_name: table_name,
                                         data: hashmap,
+                                        partition_code: partition_code,
                                     };
 
+
+                                    let arc_uuid_clone = Arc::clone(&uuid_arc);
                                     let batch_return =
-                                        controls::batch_insert::batch_insert_data(batch, &uuid)
+                                        controls::batch_insert::batch_insert_data(batch, arc_uuid_clone)
                                             .await;
 
                                     match batch_return {
@@ -275,7 +282,7 @@ fn data_interface() -> JoinHandle<()> {
                             let mut mutex_guard = INSERT_TCPSTREAM_CACHE_POOL.lock().await;
 
                             mutex_guard.keys().for_each(|k| {
-                                if k.contains(uuid.as_str()) {
+                                if k.contains(uuid_arc.as_ref()) {
                                     remove_vec.push(k.clone());
                                 }
                             });
@@ -289,7 +296,7 @@ fn data_interface() -> JoinHandle<()> {
                             let mut mutex_guard = STREAM_TCP_TABLESTRUCTURE.lock().await;
 
                             mutex_guard.keys().for_each(|k| {
-                                if k.contains(uuid.as_str()) {
+                                if k.contains(uuid_arc.as_ref()) {
                                     remove_vec.push(k.clone());
                                 }
                             });

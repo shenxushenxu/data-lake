@@ -1,7 +1,8 @@
+use std::collections::HashMap;
 use memmap2::MmapMut;
 use serde::{Deserialize, Serialize};
 use tokio::fs::File;
-use crate::entity::MasterEntity::{Insert, QueryItem, SlaveInsert};
+use crate::entity::MasterEntity::{ColumnConfigJudgment, DataType, Insert, QueryItem, SlaveInsert};
 
 /**
 创建 表的 slave 分区的 struct
@@ -85,8 +86,8 @@ pub struct IndexStruct{
 #[derive(Serialize, Deserialize, Debug)]
 pub struct DataStructure {
     pub table_name: String,
-    pub major_key: String,
-    pub data: String,
+    pub major_value: String,
+    pub data: HashMap<String, String>,
     pub _crud_type: String,
     pub partition_code: String,
     pub offset: i64
@@ -104,4 +105,5 @@ pub struct StreamReadStruct{
     pub partition_code: usize,
     pub offset: i64,
     pub read_count: usize,
+    pub table_col_type: HashMap<String, (DataType, ColumnConfigJudgment, Option<String>)>,
 }

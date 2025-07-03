@@ -4,7 +4,7 @@ use entity_lib::entity::SlaveEntity::{SlaveCreate, SlaveMessage};
 use public_function::MASTER_CONFIG;
 use std::path::Path;
 use tokio::fs::OpenOptions;
-use tokio::io::AsyncWriteExt;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 
 pub async fn create_table(table_structure: TableStructure) -> Result<(), DataLakeError> {
@@ -46,6 +46,12 @@ pub async fn create_table(table_structure: TableStructure) -> Result<(), DataLak
             stream.write_i32(slave.len() as i32).await?;
             stream.write_all(slave.as_slice()).await?;
             
+            let massage_len = stream.read_i32().await?;
+            if massage_len == -2 {
+                let mut massage = vec![0u8; massage_len as usize];
+                stream.read_exact(massage.as_mut_slice()).await?;
+                return Err(DataLakeError::CustomError(String::from_utf8(massage)?));
+            }
         }
     }
 

@@ -1,30 +1,16 @@
 use entity_lib::entity::Error::DataLakeError;
 use entity_lib::entity::SlaveEntity::{DataStructure, QueryMessage};
 use memmap2::Mmap;
-use public_function::SLAVE_CONFIG;
-use snap::raw::Decoder;
 use std::collections::HashMap;
-use tokio::fs::OpenOptions;
-use tokio::io::AsyncReadExt;
-use public_function::read_function::get_slave_path;
 
-pub async fn query(querymessage: QueryMessage, uuid:&String) -> Result<Option<Vec<String>>, DataLakeError> {
+
+pub async fn query(querymessage: QueryMessage, uuid:&String) -> Result<Option<Vec<HashMap<String, String>>>, DataLakeError> {
 
     let partition_name = &querymessage.tablename;
 
-    // let data_path = get_slave_path(partition_name).await?;
-    // let log_path = format!(
-    //     "{}\\log",
-    //     data_path
-    // );
-    // let compress_path = format!(
-    //     "{}\\compress",
-    //     data_path
-    // );
-
+    
     let mut log_file = public_function::get_list_filename(&partition_name).await;
-    // let mut compress_files = public_function::get_list_filename(&compress_path[..]).await;
-    // log_file.append(&mut compress_files);
+   
 
     let mut file_vec = log_file
         .iter()
@@ -54,8 +40,8 @@ pub async fn query(querymessage: QueryMessage, uuid:&String) -> Result<Option<Ve
 
             data_structure.data
         })
-        .filter(|x| {
-            let map = serde_json::from_str::<HashMap<String, String>>(x).unwrap();
+        .filter(|map| {
+            // let map = serde_json::from_str::<HashMap<String, String>>(x).unwrap();
 
             let mut i = 0;
             if let Some(condition) = &querymessage.conditions {
@@ -84,8 +70,7 @@ pub async fn query(querymessage: QueryMessage, uuid:&String) -> Result<Option<Ve
                 return true;
             }
             return false;
-        })
-        .collect::<Vec<String>>();
+        }).collect::<Vec<HashMap<String, String>>>();
 
     if res_vec.len() > 0 {
         return Ok(Some(res_vec));

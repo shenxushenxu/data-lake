@@ -1,6 +1,6 @@
 use entity_lib::entity::Error::DataLakeError;
 use entity_lib::entity::MasterEntity::{Info, PartitionInfo};
-use tokio::io::AsyncWriteExt;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use crate::RandomNumber::{random_number};
 
@@ -60,6 +60,18 @@ impl DataLakeTcpStream {
         self.stream.write_all(src).await?;
         return Ok(());
     }
+    
+    pub async fn read_i32(&mut self) -> Result<i32, DataLakeError> {
+        let num = self.stream.read_i32().await?;
+        return Ok(num);
+    }
+    pub async fn read_exact(&mut self, bytes: &mut [u8]) -> Result<(), DataLakeError> { 
+        self.stream.read_exact(bytes).await?;
+        
+        return Ok(());
+    }
+    
+    
 }
 
 /**

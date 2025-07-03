@@ -136,9 +136,6 @@ version = "0.1.0"
 dependencies = [
  "entity_lib",
  "public_function",
- "serde",
- "serde_json",
- "tokio",
 ]
 
 [[package]]
@@ -146,7 +143,6 @@ name = "data-lake-client"
 version = "0.1.0"
 dependencies = [
  "entity_lib",
- "public_function",
  "serde",
  "serde_json",
  "snap",
@@ -257,7 +253,6 @@ dependencies = [
  "log",
  "memmap2",
  "public_function",
- "serde",
  "serde_json",
  "snap",
  "tokio",
@@ -369,7 +364,6 @@ dependencies = [
  "entity_lib",
  "memmap2",
  "rand",
- "serde",
  "serde_json",
  "snap",
  "tokio",
@@ -521,7 +515,6 @@ dependencies = [
  "log",
  "memmap2",
  "public_function",
- "serde",
  "serde_json",
  "snap",
  "tokio",
