@@ -82,6 +82,8 @@ cargo run --release -- masterip:masterprot
 <br>{"sql":"ALTER TABLE table_name OROP username_a"}
 ## 查看表的元数据
 <br> {"sql":"show table_name"}
+## 查看表内每个分区的最大offset
+<br> {"sql":"max_offset table_name"}
 
 ## 消费表内的数据：
 ### 从头开始消费：
