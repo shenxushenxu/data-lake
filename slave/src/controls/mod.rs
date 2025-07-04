@@ -5,3 +5,4 @@ pub mod query_table;
 pub mod stream_read;
 pub mod batch_insert;
 pub mod drop_table;
+pub mod max_offset;

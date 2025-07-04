@@ -20,6 +20,7 @@ use tokio::net::TcpListener;
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 use uuid::Uuid;
+use crate::controls::max_offset::get_max_offset;
 use crate::mechanism::replicas::{follower_replicas_sync, Leader_replicas_sync};
 
 /**
@@ -230,6 +231,17 @@ fn data_read_write() -> JoinHandle<()> {
                                     }
                                     
                                     
+                                }
+                                SlaveMessage::max_offset(partition_code) => {
+                                    match get_max_offset(&partition_code).await{
+                                        Ok(offset) => {
+                                            write.write_i32(8).await.unwrap();
+                                            write.write_i64(offset).await.unwrap();
+                                        }
+                                        Err(e) => {
+                                            public_function::write_error(e, &mut write).await;
+                                        }
+                                    }
                                 }
                             }
                         }

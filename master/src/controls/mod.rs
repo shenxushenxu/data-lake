@@ -6,3 +6,4 @@ pub mod stream_read;
 pub mod batch_insert;
 pub mod alter;
 pub mod drop_table;
+pub mod max_offset;

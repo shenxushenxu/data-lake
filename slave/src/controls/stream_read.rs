@@ -1,13 +1,10 @@
-use std::collections::HashMap;
 use entity_lib::entity::Error::DataLakeError;
 use entity_lib::entity::SlaveEntity::{DataStructure, IndexStruct, StreamReadStruct};
 use memmap2::Mmap;
-use public_function::{data_complete, SLAVE_CONFIG};
-use std::mem;
+use public_function::{data_complete};
 use snap::raw::{Decoder, Encoder};
 use tokio::fs::OpenOptions;
 use entity_lib::entity::const_property::INDEX_SIZE;
-use entity_lib::entity::MasterEntity::{ColumnConfigJudgment, DataType};
 use public_function::read_function::ArrayBytesReader;
 
 pub async fn stream_read(streamreadstruct: &StreamReadStruct) -> Result<Option<Vec<u8>>, DataLakeError> {
@@ -178,7 +175,11 @@ async fn find_data(index_path: &String, offset: i64, read_count: usize) -> Resul
     }
 
     if start_index.is_none() {
-        return Ok(None);
+
+        let bytes_mid = &index_mmap[..start_seek + INDEX_SIZE];
+        let data_mid = bincode::deserialize::<IndexStruct>(bytes_mid)?;
+        start_index = Some(data_mid);
+        start_seek = 0;
     }
 
     // 获得 结尾的offset 位置

@@ -101,7 +101,8 @@ pub async fn batch_insert_data(
 
             let bytes_len = tcp_stream.read_i32().await?;
             if bytes_len == -2 {
-                let mut message = vec![0; bytes_len as usize];
+                let meass_len = tcp_stream.read_i32().await?;
+                let mut message = vec![0; meass_len as usize];
                 tcp_stream.read_exact(message.as_mut_slice()).await?;
 
                 let message_str = String::from_utf8(message)?;

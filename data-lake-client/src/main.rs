@@ -2,6 +2,7 @@ mod controls;
 mod entity;
 use std::io::{Write};
 use std::{env, io};
+use std::collections::HashMap;
 use snap::raw::{Decoder, Encoder};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
@@ -70,6 +71,14 @@ async fn main() {
                         let tablestructure = serde_json::from_slice::<TableStructure>(&table_structure).unwrap();
                         
                         println!("{:?}", tablestructure)
+                        
+                    }else if mess_len == -4 {
+                        let offset_map_len = stream.read_i32().await.unwrap();
+                        let mut offset_map_bytes = vec![0; offset_map_len as usize];
+                        stream.read_exact(offset_map_bytes.as_mut_slice()).await.unwrap();
+                        let offset_map = serde_json::from_slice::<HashMap<usize, i64>>(&offset_map_bytes).unwrap();
+
+                        println!("{:?}", offset_map)
                         
                     } else {
                         let mut mess = vec![0; mess_len as usize];

@@ -27,6 +27,7 @@ use tokio::sync::Mutex;
 use tokio::sync::mpsc::Receiver;
 use tokio::task::JoinHandle;
 use uuid::Uuid;
+use crate::controls::max_offset::get_max_offset;
 
 /**
 -1 是停止
@@ -103,7 +104,7 @@ fn data_interface() -> JoinHandle<()> {
 
                             match statement {
                                 Statement::sql(daql) => match daql_analysis_function(&daql).await {
-                                    
+
                                     Ok(daqltype) => match daqltype {
                                         DaqlType::CREATE_TABLE(tablestructure) => {
                                             match create_table(tablestructure).await {
@@ -167,12 +168,12 @@ fn data_interface() -> JoinHandle<()> {
                                                     let metadtat_message =
                                                         serde_json::to_string(&table_structure).unwrap();
                                                     let byt = metadtat_message.as_bytes();
-                                                    
+
                                                     let write_len = byt.len();
                                                     let write_message = byt;
-                                                    
+
                                                     write.write_i32(-3).await.unwrap();
-                                                    
+
                                                     write.write_i32(write_len as i32)
                                                         .await
                                                         .unwrap();
@@ -201,6 +202,25 @@ fn data_interface() -> JoinHandle<()> {
                                         DaqlType::DROP_TABLE(table_name) => {
                                             match drop_table_operation(&table_name).await {
                                                 Ok(_) => {
+                                                    write.write_i32(-1).await.unwrap();
+                                                }
+                                                Err(e) => {
+                                                    public_function::write_error(e, &mut write)
+                                                        .await;
+                                                }
+                                            }
+                                        },
+                                        DaqlType::MAX_OFFSET(table_name) => {
+                                            match get_max_offset(&table_name).await{
+                                                Ok(offset_map) => {
+                                                    write.write_i32(-4).await.unwrap();
+                                                    
+                                                    let json = serde_json::to_string(&offset_map).unwrap();
+                                                    let bytes = json.as_bytes();
+                                                    let bytes_len = bytes.len() as i32;
+                                                    write.write_i32(bytes_len).await.unwrap();
+                                                    write.write_all(bytes).await.unwrap();
+                                                    
                                                     write.write_i32(-1).await.unwrap();
                                                 }
                                                 Err(e) => {

@@ -11,4 +11,5 @@ pub enum DaqlType{
     SHOW_TABLE(String),
     COMPRESS_TABLE(String),
     DROP_TABLE(String),
+    MAX_OFFSET(String)
 }

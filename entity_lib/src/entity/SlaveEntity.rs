@@ -36,6 +36,7 @@ pub enum SlaveMessage{
     drop_table(String),
     follower_replicas_sync(ReplicasSyncStruct),
     leader_replicas_sync(SyncMessage),
+    max_offset(String),
 }
 
 #[derive(Serialize, Deserialize, Debug)]
