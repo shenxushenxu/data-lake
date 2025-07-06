@@ -8,6 +8,8 @@ pub const PARTITION_NUMBER:&str = "partition.number";
 pub const REPLICAS_NUMBER:&str = "replicas.number";
 
 pub const CRUD_TYPE:&str = "_crud_type";
+pub const CURD_INSERT:&str = "insert";
+pub const CURD_DELETE:&str = "delete";
 // 索引大小
 pub const INDEX_SIZE:usize = mem::size_of::<IndexStruct>();
 

@@ -17,13 +17,16 @@ impl DataLakeTcpStream {
 
         let partition_info = partition_info_vec_clone
             .iter()
-            .filter(|x| match x.info {
+            .filter(|x| 
+                match x.info {
                 Info::Leader => true,
                 Info::Follower => false,
-            })
+            }
+            )
             .collect::<Vec<&PartitionInfo>>()[0];
         let address = &partition_info.address;
 
+        
         let stream = match TcpStream::connect(address).await {
             Ok(stream) => Ok(stream),
             Err(_) => {
@@ -98,7 +101,7 @@ async fn searchfac(
                 partition_info_vec.remove(random_number);
             }
         } else {
-            return Err(DataLakeError::CustomError("No available copy available .".to_string()));
+            return Err(DataLakeError::custom("No available copy available .".to_string()));
         }
     }
 }

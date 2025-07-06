@@ -22,7 +22,8 @@ pub async  fn batch_insert_data(batch_insert: SlaveInsert) -> Result<(), DataLak
 pub async fn insert_operation(batch_insert: &SlaveInsert) -> Result<(), DataLakeError> {
 
 
-    let mut offset_init = None;
+    
+    
 
     let table_name = &batch_insert.table_name;
     let partition_code = &batch_insert.partition_code;
@@ -34,9 +35,13 @@ pub async fn insert_operation(batch_insert: &SlaveInsert) -> Result<(), DataLake
 
     let mut mutex_map= FILE_CACHE_POOL.lock().await;
 
+    
+    // 定义 offset 变量
+    let mut offset_init = get_offset(None, &file_key).await?;
+    
     for insert_single in batch_insert_data.iter() {
 
-
+        
         batch_format_matching(insert_single, table_structure).await?;
 
         let slave_cache_struct = {
@@ -65,14 +70,7 @@ pub async fn insert_operation(batch_insert: &SlaveInsert) -> Result<(), DataLake
                     let mut metadata_mmap = unsafe {MmapMut::map_mut(&metadata_file)?};
 
 
-                    let offset_file_name = match offset_init{
-                        Some(offset) => {
-                            offset
-                        }
-                        None => {
-                            i64::from_be_bytes((&metadata_mmap[..]).try_into().unwrap())
-                        }
-                    };
+                    let offset_file_name = &offset_init;
 
 
                     let log_file_path = format!(
@@ -91,14 +89,12 @@ pub async fn insert_operation(batch_insert: &SlaveInsert) -> Result<(), DataLake
                     );
 
                     let mut log_file = OpenOptions::new()
-                        .write(true)
                         .create(true)
                         .append(true)
                         .open(log_file_path)
                         .await?;
 
                     let mut index_file = OpenOptions::new()
-                        .write(true)
                         .create(true)
                         .append(true)
                         .open(index_file_path)
@@ -121,18 +117,10 @@ pub async fn insert_operation(batch_insert: &SlaveInsert) -> Result<(), DataLake
 
 
 
-        let mut metadata_mmap = &mut slave_cache_struct.metadata_mmap;
         let data_file = &mut slave_cache_struct.data_file;
         let index_file = &mut slave_cache_struct.index_file;
 
-        let offset = match offset_init{
-            Some(offset) => {
-                offset
-            }
-            None => {
-                i64::from_be_bytes((&metadata_mmap[..]).try_into().unwrap())
-            }
-        };
+        let offset = offset_init.clone();
         
         let start_seek = data_file.seek(SeekFrom::End(0)).await?;
 
@@ -171,7 +159,8 @@ pub async fn insert_operation(batch_insert: &SlaveInsert) -> Result<(), DataLake
         
 
 
-        offset_init = Some(offset + 1);
+        offset_init = offset_init + 1;
+        
         
         let slave_file_segment_bytes = {
             let slave_config = SLAVE_CONFIG.lock().await;
@@ -189,17 +178,10 @@ pub async fn insert_operation(batch_insert: &SlaveInsert) -> Result<(), DataLake
     }
 
     let mut metadata_mmap = &mut mutex_map.get_mut(&file_key).unwrap().metadata_mmap;
-    let offset = match offset_init{
-        Some(offset) => {
-            offset
-        }
-        None => {
-            i64::from_be_bytes((&metadata_mmap[..]).try_into().unwrap())
-        }
-    };
+    
     unsafe {
         let dst_ptr = metadata_mmap.as_mut_ptr();
-        let slice = offset.to_be_bytes();
+        let slice = offset_init.to_be_bytes();
         let src_ptr = slice.as_ptr();
 
         std::ptr::copy_nonoverlapping(src_ptr, dst_ptr, slice.len());
@@ -209,7 +191,40 @@ pub async fn insert_operation(batch_insert: &SlaveInsert) -> Result<(), DataLake
 
 }
 
+/**
+获得 当前数据的offset
+**/
+async fn get_offset(offset_init: Option<i64>, partition_code: &String) -> Result<i64, DataLakeError> {
+    let offset_file_name = match offset_init{
+        Some(offset) => {
+            offset
+        }
+        None => {
 
+            let partition_path = get_slave_path(partition_code).await?;
+
+            let metadata_file_path = format!(
+                "{}/{}",
+                partition_path,
+                METADATA_LOG
+            );
+
+            let mut metadata_file = OpenOptions::new()
+                .read(true)
+                .write(true)
+                .create(true)
+                .open(metadata_file_path)
+                .await?;
+            let mut metadata_mmap = unsafe {MmapMut::map_mut(&metadata_file)?};
+            
+            
+            
+            i64::from_be_bytes((&metadata_mmap[..]).try_into().unwrap())
+        }
+    };
+    
+    return Ok(offset_file_name);
+}
 
 
 /**
@@ -250,7 +265,7 @@ pub async fn type_verification(
             None => {
                 
                 if col_name != CRUD_TYPE {
-                    return Err(DataLakeError::CustomError(format!(
+                    return Err(DataLakeError::custom(format!(
                         "{} 表内不存在 {} 列",
                         table_name, col_name
                     )));
@@ -270,12 +285,12 @@ fn conf_verification(
     match column_conf_judg {
         ColumnConfigJudgment::PRIMARY_KEY => {
             if col_value.trim().is_empty() {
-                return Err(DataLakeError::CustomError(format!("{} 列为 空", col_name)));
+                return Err(DataLakeError::custom(format!("{} 列为 空", col_name)));
             }
         }
         ColumnConfigJudgment::NOT_NULL => {
             if col_value.trim().is_empty() {
-                return Err(DataLakeError::CustomError(format!("{} 列为 空", col_name)));
+                return Err(DataLakeError::custom(format!("{} 列为 空", col_name)));
             }
         }
         _ => {}
@@ -298,7 +313,7 @@ fn verification_type(
         DataType::int => match col_value.parse::<i32>() {
             Ok(_) => {}
             Err(e) => {
-                return Err(DataLakeError::CustomError(format!(
+                return Err(DataLakeError::custom(format!(
                     "{} 列转换为 int 失败，检查插入的数据: {}",
                     col_name, col_value
                 )));
@@ -307,7 +322,7 @@ fn verification_type(
         DataType::float => match col_value.parse::<f32>() {
             Ok(_) => {}
             Err(_) => {
-                return Err(DataLakeError::CustomError(format!(
+                return Err(DataLakeError::custom(format!(
                     "{} 列转换为 float 失败，检查插入的数据: {}",
                     col_name, col_value
                 )));
@@ -316,7 +331,7 @@ fn verification_type(
         DataType::boolean => match col_value.parse::<bool>() {
             Ok(_) => {}
             Err(_) => {
-                return Err(DataLakeError::CustomError(format!(
+                return Err(DataLakeError::custom(format!(
                     "{} 列转换为 bool 失败，检查插入的数据: {}",
                     col_name, col_value
                 )));
@@ -325,14 +340,14 @@ fn verification_type(
         DataType::long => match col_value.parse::<i64>() {
             Ok(_) => {}
             Err(_) => {
-                return Err(DataLakeError::CustomError(format!(
+                return Err(DataLakeError::custom(format!(
                     "{} 列转换为 bool 失败，检查插入的数据: {}",
                     col_name, col_value
                 )));
             }
         },
         _ => {
-            return Err(DataLakeError::CustomError(format!(
+            return Err(DataLakeError::custom(format!(
                 "{}  不符合任何数据类型",
                 col_name
             )));

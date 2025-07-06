@@ -22,7 +22,8 @@ pub async fn compress_table(table_name: &String) -> Result<(), DataLakeError> {
             
             let mut stream = TcpStream::connect(address).await?;
 
-            let mut message = SlaveMessage::compress_table(format!("{}-{}", table_name, key));
+            let partition_code = format!("{}-{}", table_name, key);
+            let mut message = SlaveMessage::compress_table(partition_code.clone());
 
 
             let bytes = bincode::serialize(&message)?;
@@ -31,7 +32,7 @@ pub async fn compress_table(table_name: &String) -> Result<(), DataLakeError> {
 
             stream.write_i32(bytes_len as i32).await?;
             stream.write_all(&bytes).await?;
-
+            
             public_function::read_error(&mut stream).await?
         }
     }

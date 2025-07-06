@@ -35,7 +35,7 @@ pub async fn batch_insert_data(
             for data_map in vec_data_map {
                 match data_map.get(major_key) {
                     None => {
-                        return Err(DataLakeError::CustomError(format!(
+                        return Err(DataLakeError::custom(format!(
                             "{:?}  这行数据没有主键列 {}",
                             data_map, major_key
                         )));
@@ -55,6 +55,7 @@ pub async fn batch_insert_data(
             res_map.entry(partition_code).or_insert(vec_data_map);
         }
     }
+
     let mut join_handle_set = tokio::task::JoinSet::new();
     for (partition_code, vec_map) in res_map {
         
@@ -63,6 +64,7 @@ pub async fn batch_insert_data(
         let table_structure_clone = table_structure.clone();
         
         let uuid_clone = Arc::clone(&uuid);
+        
         
         join_handle_set.spawn(async move {
             
@@ -80,9 +82,13 @@ pub async fn batch_insert_data(
             let bytes = bincode::serialize(&slave_message)?;
             let bytes_len = bytes.len() as i32;
 
-
+            
+            
             let mut map_guard = INSERT_TCPSTREAM_CACHE_POOL.lock().await;
-            let tcp_stream = match map_guard.get_mut(uuid_clone.as_ref()) {
+            
+            let tcp_key = format!("{}-{}", uuid_clone.as_ref(), partition_code);
+            
+            let tcp_stream = match map_guard.get_mut(&tcp_key) {
                 Some(value) => value,
                 None => {
                     let partition_address = &mut partition_address;
@@ -91,8 +97,8 @@ pub async fn batch_insert_data(
                         .unwrap();
 
                     let stream = DataLakeTcpStream::connect(partition_info_vec).await?;
-                    map_guard.insert(uuid_clone.as_ref().clone(), stream);
-                    let value = map_guard.get_mut(uuid_clone.as_ref()).unwrap();
+                    map_guard.insert(tcp_key.clone(), stream);
+                    let value = map_guard.get_mut(&tcp_key).unwrap();
                     value
                 }
             };
@@ -106,12 +112,11 @@ pub async fn batch_insert_data(
                 tcp_stream.read_exact(message.as_mut_slice()).await?;
 
                 let message_str = String::from_utf8(message)?;
-                return Err(DataLakeError::CustomError(message_str));
+                return Err(DataLakeError::custom(message_str));
 
             }
           return Ok(());
         });
-       
         
     }
 
@@ -124,7 +129,7 @@ pub async fn batch_insert_data(
             }
             Err(e) => {
                 eprintln!("Task failed: {:?}", e);
-                return Err(DataLakeError::CustomError("插入数据的协程报错了。".to_string()));
+                return Err(DataLakeError::custom("插入数据的协程报错了。".to_string()));
 
             }
         }

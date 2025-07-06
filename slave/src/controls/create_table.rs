@@ -37,13 +37,13 @@ pub async fn create_table_controls(create_message: SlaveCreate) -> Result<(), Da
         "metadata.log"
     );
 
-    let mut log_file = OpenOptions::new()
+    let mut metadata_file = OpenOptions::new()
         .write(true)
         .create(true)
         .open(partition_metadata)
         .await?;
 
-    log_file.write_i64(0).await?;
+    metadata_file.write_i64(0).await?;
 
     Ok(())
 }

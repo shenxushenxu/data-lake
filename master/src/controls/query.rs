@@ -64,7 +64,7 @@ pub async fn query_daql(query_message: QueryMessage) -> Result<Option<Vec<String
                             let mut mess = vec![0u8; len as usize];
                             stream.read_exact(&mut mess).await?;
                             let dd = String::from_utf8(mess)?;
-                            return Err(DataLakeError::CustomError(dd));
+                            return Err(DataLakeError::custom(dd));
                         } else {
                             let mut mess = vec![0u8; mess_len as usize];
                             stream.read_exact(&mut mess).await?;

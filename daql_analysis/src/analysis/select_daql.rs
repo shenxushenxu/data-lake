@@ -42,7 +42,7 @@ pub async fn select_analysis(sql: &String) -> Result<QueryMessage, DataLakeError
 
                 return Ok((vec[0].to_string(), ">".to_string(), vec[1].replace("'","")))
             }else {
-                return Err(DataLakeError::CustomError("啥也没有  = < >".to_string()));
+                return Err(DataLakeError::custom("啥也没有  = < >".to_string()));
             }
 
         }).collect::<Result<Vec<(String, String, String)>, DataLakeError>>()?;

@@ -69,8 +69,7 @@ impl<'a> Consumer<'a> {
         self.socket.write_all(bytes).await.unwrap();
 
         let mut res_vec = Vec::<String>::new();
-
-
+        
         loop {
             let mess_len = self.socket.read_i32().await.unwrap();
             if mess_len == -1 {
@@ -95,7 +94,7 @@ impl<'a> Consumer<'a> {
                 let mut mess = vec![0u8; len as usize];
                 self.socket.read_exact(&mut mess).await.unwrap();
 
-                println!("{}", String::from_utf8(mess).unwrap());
+                println!("{}",String::from_utf8(mess).unwrap())
             } else {
                 let mut mess = vec![0u8; mess_len as usize];
                 self.socket.read_exact(mess.as_mut_slice()).await.unwrap();

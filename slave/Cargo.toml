@@ -13,6 +13,5 @@ log = {workspace = true}
 env_logger = {workspace = true}
 uuid = {workspace = true}
 
-
 entity_lib = {path = "../entity_lib"}
 public_function = {path = "../public_function"}

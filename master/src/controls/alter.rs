@@ -15,7 +15,7 @@ pub async fn alter_orop(alteradd: (String, String)) -> Result<(), DataLakeError>
     let major_key = &tablestruct.major_key;
 
     if major_key.eq(col_name.as_str()) {
-        return Err(DataLakeError::CustomError(format!(
+        return Err(DataLakeError::custom(format!(
             "{} 不能删除主键列",
             col_name
         )));
@@ -52,7 +52,7 @@ pub async fn alter_orop(alteradd: (String, String)) -> Result<(), DataLakeError>
         file.write_all(data.as_slice()).await?;
 
     } else {
-        return Err(DataLakeError::CustomError(format!(
+        return Err(DataLakeError::custom(format!(
             "{} This column does not exist.",
             col_name
         )));
@@ -78,7 +78,7 @@ pub async fn alter_add(
 
 
     if col_type.contains_key(&col_name) {
-        return Err(DataLakeError::CustomError(format!(
+        return Err(DataLakeError::custom(format!(
             "{} 列已存在， 不可重复添加",
             col_name
         )));
@@ -90,7 +90,7 @@ pub async fn alter_add(
             "boolean" => DataType::boolean,
             "long" => DataType::string,
             _ => {
-                return Err(DataLakeError::CustomError(format!(
+                return Err(DataLakeError::custom(format!(
                     "Unknown column type {}",
                     type_name
                 )));
@@ -99,10 +99,10 @@ pub async fn alter_add(
 
         let column_config = match (key_words_1.as_str(), key_words_2.as_str()) {
             ("primary", "key") => {
-                return Err(DataLakeError::CustomError(format!("{} 不允许 PRIMARY KEY", col_name)));
+                return Err(DataLakeError::custom(format!("{} 不允许 PRIMARY KEY", col_name)));
             },
             ("not", "null") => {
-                return Err(DataLakeError::CustomError(format!("{} 不允许 NOT NULL", col_name)));
+                return Err(DataLakeError::custom(format!("{} 不允许 NOT NULL", col_name)));
             },
             ("default", _) =>{
                 let value = if key_words_2.contains("'"){
@@ -116,7 +116,7 @@ pub async fn alter_add(
             }
             ("", "") => (ColumnConfigJudgment::NOT, None),
             _ => {
-                return Err(DataLakeError::CustomError(format!(
+                return Err(DataLakeError::custom(format!(
                     "Unknown column config {} {}",
                     key_words_1, key_words_2
                 )));

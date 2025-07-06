@@ -28,7 +28,7 @@ pub async fn create_analysis(sql: &String) -> Result<TableStructure, DataLakeErr
                     Ok((spl[0], spl[1], spl[2], spl[3]))
                 }
                 _ => {
-                    Err(DataLakeError::CustomError(format!("{} 创建参数不对", tablename)))
+                    Err(DataLakeError::custom(format!("{} 创建参数不对", tablename)))
                 }
             };
 
@@ -48,7 +48,7 @@ pub async fn create_analysis(sql: &String) -> Result<TableStructure, DataLakeErr
             "boolean" => DataType::boolean,
             "long" => DataType::string,
             _ => {
-                return Err(DataLakeError::CustomError(format!(
+                return Err(DataLakeError::custom(format!(
                     "Unknown column type {}",
                     type_name
                 )));
@@ -71,7 +71,7 @@ pub async fn create_analysis(sql: &String) -> Result<TableStructure, DataLakeErr
             }
             ("", "") => (ColumnConfigJudgment::NOT, None),
             _ => {
-                return Err(DataLakeError::CustomError(format!(
+                return Err(DataLakeError::custom(format!(
                     "Unknown column config {} {}",
                     key_words_1, key_words_2
                 )));
@@ -106,11 +106,11 @@ pub async fn create_analysis(sql: &String) -> Result<TableStructure, DataLakeErr
                     config.insert(const_property::REPLICAS_NUMBER, value.to_string());
                 }
                 _ => {
-                    return Err(DataLakeError::CustomError(format!("{} This configuration does not exist..", key)));
+                    return Err(DataLakeError::custom(format!("{} This configuration does not exist..", key)));
                 }
             }
         }else {
-            return Err(DataLakeError::CustomError(format!("{} misallocate.", key)));
+            return Err(DataLakeError::custom(format!("{} misallocate.", key)));
         }
     }
 
@@ -118,14 +118,14 @@ pub async fn create_analysis(sql: &String) -> Result<TableStructure, DataLakeErr
     let patition_number = if let Some(patition_number) = config.get(const_property::PARTITION_NUMBER){
         patition_number.parse::<usize>()?
     }else {
-        return Err(DataLakeError::CustomError(format!("unfound {} .", const_property::PARTITION_NUMBER)));
+        return Err(DataLakeError::custom(format!("unfound {} .", const_property::PARTITION_NUMBER)));
     };
     
     
     let replicas_number = if let Some(replicas_number) = config.get(const_property::REPLICAS_NUMBER) {
         replicas_number.parse::<usize>()?
     }else {
-        return Err(DataLakeError::CustomError(format!("unfound {} .", const_property::REPLICAS_NUMBER)));
+        return Err(DataLakeError::custom(format!("unfound {} .", const_property::REPLICAS_NUMBER)));
     };
     
     
@@ -140,7 +140,7 @@ pub async fn create_analysis(sql: &String) -> Result<TableStructure, DataLakeErr
             ColumnConfigJudgment::PRIMARY_KEY => {
                 match major_key {
                     None => {  major_key = Some(key.clone()); }
-                    Some(_) => { return Err(DataLakeError::CustomError(format!("{} Duplicate primary key in the table.", tablename)));  }
+                    Some(_) => { return Err(DataLakeError::custom(format!("{} Duplicate primary key in the table.", tablename)));  }
                 }
             }
             _ => (),
@@ -148,12 +148,12 @@ pub async fn create_analysis(sql: &String) -> Result<TableStructure, DataLakeErr
     }
 
     if None == major_key {
-        return Err(DataLakeError::CustomError(format!("{} There is no primary key in the table.", tablename)));
+        return Err(DataLakeError::custom(format!("{} There is no primary key in the table.", tablename)));
     }
 
     let replicas = replicas_number + 1;
     if replicas > slave_nodes.len(){
-        return Err(DataLakeError::CustomError(format!("{} The number of copies is greater than the number of slaves.", tablename)));
+        return Err(DataLakeError::custom(format!("{} The number of copies is greater than the number of slaves.", tablename)));
     }
     
     

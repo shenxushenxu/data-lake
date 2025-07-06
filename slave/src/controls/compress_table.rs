@@ -13,14 +13,11 @@ use public_function::read_function::get_slave_path;
 pub async fn compress_table(table_name: &String, uuid: &String) -> Result<(), DataLakeError> {
     
     
-    // 
-    // let log_path = format!("{}/{}/log", data_path, table_name);
     let data_path = get_slave_path(table_name).await?;
-    let compress_path = format!("{}/{}/compress", data_path, table_name);
+    let compress_path = format!("{}/compress", data_path);
 
     let mut log_files = public_function::get_list_filename(&table_name).await;
-    // let mut compress_files = public_function::get_list_filename(&compress_path[..]).await;
-    // log_files.append(&mut compress_files);
+  
 
     let mut file_vec = log_files
         .iter()
@@ -43,9 +40,17 @@ pub async fn compress_table(table_name: &String, uuid: &String) -> Result<(), Da
 
         return file_code;
     });
+    
+    let file_vec_len = file_vec.len();
+    
+    if file_vec_len > 2 {
+        file_vec.remove(file_vec.len() - 1);
+        file_vec.remove(file_vec.len() - 1);
+    }else { 
+        return Ok(());
+    }
 
-    file_vec.remove(file_vec.len() - 1);
-    file_vec.remove(file_vec.len() - 1);
+    
 
 
 
@@ -53,25 +58,25 @@ pub async fn compress_table(table_name: &String, uuid: &String) -> Result<(), Da
         .iter()
         .map(|x2| x2.1.clone())
         .collect::<Vec<String>>();
-
+    
     let (res_map, temp_file) = public_function::read_function::data_duplicate_removal(f_v, uuid).await?;
+
+    
     let temp_mmap = unsafe { Mmap::map(&temp_file) }?;
 
     let mut tmpfile_offsetCode = HashMap::<String, i64>::new();
 
-    let tmp_file_name = Uuid::new_v4().to_string();
+    let tmp_file_name = get_tmp_file_name();
     tmpfile_offsetCode.insert(tmp_file_name.clone(), 0);
 
     let mut compress_file = OpenOptions::new()
         .create(true)
-        .write(true)
         .append(true)
         .open(format!("{}/{}.snappy", &compress_path, tmp_file_name))
         .await?;
 
     let mut index_file = OpenOptions::new()
         .create(true)
-        .write(true)
         .append(true)
         .open(format!("{}/{}.index", &compress_path, tmp_file_name))
         .await?;
@@ -114,18 +119,16 @@ pub async fn compress_table(table_name: &String, uuid: &String) -> Result<(), Da
         offset += 1;
 
         if end_seek > file_max_capacity {
-            let tmp_file_name = Uuid::new_v4().to_string();
+            let tmp_file_name = get_tmp_file_name();
 
             compress_file = OpenOptions::new()
                 .create(true)
-                .write(true)
                 .append(true)
                 .open(format!("{}/{}.snappy", &compress_path, tmp_file_name))
                 .await?;
 
             index_file = OpenOptions::new()
                 .create(true)
-                .write(true)
                 .append(true)
                 .open(format!("{}/{}.index", &compress_path, tmp_file_name))
                 .await?;
@@ -159,4 +162,13 @@ pub async fn compress_table(table_name: &String, uuid: &String) -> Result<(), Da
     }
 
     return Ok(());
+}
+
+
+
+fn get_tmp_file_name() -> String {
+    
+    let uuid = Uuid::new_v4().to_string();
+    let tmp_file_name = format!("temp_{}", uuid);
+    return tmp_file_name;
 }

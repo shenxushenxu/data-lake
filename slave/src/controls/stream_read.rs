@@ -118,22 +118,23 @@ pub async fn binary_search<'a>(file_vec: &'a Vec<&(String, String)>, offset: i64
     for index in 0..file_vec.len() {
         let (_, this_index_path) = file_vec[index];
 
-        let mut index_file = OpenOptions::new()
+        let index_file = OpenOptions::new()
             .read(true)
             .open(this_index_path)
             .await?;
-
+        
         let index_mmap = unsafe { Mmap::map(&index_file)?};
 
         let mmap_len = index_mmap.len();
+        if mmap_len > INDEX_SIZE {
+            let index_bytes = &index_mmap[(mmap_len - INDEX_SIZE)..mmap_len];
 
-        let index_bytes = &index_mmap[(mmap_len - INDEX_SIZE)..mmap_len];
-        
-        let Index_struct = bincode::deserialize::<IndexStruct>(index_bytes)?;
-        let file_end_offset = Index_struct.offset;
+            let Index_struct = bincode::deserialize::<IndexStruct>(index_bytes)?;
+            let file_end_offset = Index_struct.offset;
 
-        if file_end_offset >= offset {
-            return Ok(Some(this_index_path));
+            if file_end_offset >= offset {
+                return Ok(Some(this_index_path));
+            }
         }
     }
     return Ok(None);

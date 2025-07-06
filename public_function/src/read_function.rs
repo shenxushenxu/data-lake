@@ -3,17 +3,19 @@ use entity_lib::entity::Error::DataLakeError;
 use entity_lib::entity::SlaveEntity::DataStructure;
 use snap::raw::Decoder;
 use std::collections::HashMap;
+use std::fmt::format;
 use std::io::SeekFrom;
 use std::path::Path;
 use memmap2::Mmap;
 use tokio::fs::{File, OpenOptions};
 use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 use uuid::Uuid;
-
-
-
+use entity_lib::entity::const_property;
 
 pub async fn data_duplicate_removal(file_vec: Vec<String>, uuid:&String) -> Result<(HashMap<String, (usize, usize)>, File), DataLakeError> {
+    
+    
+    
     let mut res_map = HashMap::<String, (usize, usize)>::new();
 
 
@@ -54,8 +56,7 @@ pub async fn data_duplicate_removal(file_vec: Vec<String>, uuid:&String) -> Resu
 
                     let mut decoder = Decoder::new();
                     let message_bytes = decoder
-                        .decompress_vec(&message)
-                        .unwrap_or_else(|e| panic!("解压失败: {}", e));
+                        .decompress_vec(&message)?;
 
                     let message_str = std::str::from_utf8(&message_bytes)?;
                     let data_structure = serde_json::from_str::<DataStructure>(message_str)?;
@@ -66,7 +67,7 @@ pub async fn data_duplicate_removal(file_vec: Vec<String>, uuid:&String) -> Resu
 
                     match res_map.get(major_value) {
                         Some((position, len)) => match crud_type.as_str() {
-                            "insert" => {
+                            const_property::CURD_INSERT => {
 
                                 let temp_mmap = unsafe {Mmap::map(&temp_file)}?;
 
@@ -84,23 +85,23 @@ pub async fn data_duplicate_removal(file_vec: Vec<String>, uuid:&String) -> Resu
 
                                     res_map.insert(major_value.clone(), (data_position as usize, data_len));
                                 } else {
-                                    return Err(DataLakeError::CustomError(
-                                        "奶奶的，offset出毛病了".to_string(),
+                                    return Err(DataLakeError::custom(
+                                        format!("{} : 奶奶的，offset出毛病了  本身的offset {}   map里面存储的offset{}", file_path, offset, map_data_offset)
                                     ));
                                 }
                             }
-                            "delete" => {
+                            const_property::CURD_DELETE => {
                                 res_map.remove(major_value);
                             }
                             _ => {
-                                return Err(DataLakeError::CustomError(format!(
+                                return Err(DataLakeError::custom(format!(
                                     "存在没有被定义的  crud 操作: {:?}",
                                     data_structure
                                 )));
                             }
                         },
                         None => match crud_type.as_str() {
-                            "insert" => {
+                            const_property::CURD_INSERT => {
 
                                 let data_position = temp_file.seek(SeekFrom::End(0)).await?;
                                 let data_bytes = bincode::serialize(&data_structure)?;
@@ -109,11 +110,11 @@ pub async fn data_duplicate_removal(file_vec: Vec<String>, uuid:&String) -> Resu
 
                                 res_map.insert(major_value.clone(), (data_position as usize, data_len));
                             }
-                            "delete" => {
+                            const_property::CURD_DELETE => {
                                 res_map.remove(major_value);
                             }
                             _ => {
-                                return Err(DataLakeError::CustomError(format!(
+                                return Err(DataLakeError::custom(format!(
                                     "存在没有被定义的  crud 操作: {:?}",
                                     data_structure
                                 )));
@@ -153,7 +154,7 @@ pub async fn get_slave_path(table_name: &String) -> Result<String, DataLakeError
         }
     }
     
-    return Err(DataLakeError::CustomError(format!("{} This partition does not exist.",table_name)));
+    return Err(DataLakeError::custom(format!("{} This partition does not exist.",table_name)));
     
 }
 

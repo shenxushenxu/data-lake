@@ -23,6 +23,10 @@ use uuid::Uuid;
 use crate::controls::max_offset::get_max_offset;
 use crate::mechanism::replicas::{follower_replicas_sync, Leader_replicas_sync};
 
+
+
+
+
 /**
 消息返回 
    -1 是消息完结
@@ -39,21 +43,22 @@ async fn main() {
 
         let file_path = args.get(1).unwrap();
         let map = load_properties(file_path);
-
+        
         let slave_node = map.get("slave.node").unwrap().clone();
         let slave_data = map.get("slave.data").unwrap().clone();
         let slave_file_segment_bytes = map.get("slave.file.segment.bytes").unwrap().clone();
-
+        let slave_replicas_sync_num = map.get("slave.replicas.sync.num").unwrap().clone();
         let slave_data_vec = slave_data
             .split(",")
             .map(|x| x.trim().to_string())
             .collect::<Vec<String>>();
-
-        let slave_file_segment_bytes = slave_file_segment_bytes.parse::<usize>().unwrap();
         
+        let slave_file_segment_bytes = slave_file_segment_bytes.parse::<usize>().unwrap();
+        let slave_replicas_sync_num = slave_replicas_sync_num.parse::<usize>().unwrap();
+
         let mut slave_config = SLAVE_CONFIG.lock().await;
         unsafe {
-            *slave_config = SlaveConfig::new(slave_node, slave_data_vec, slave_file_segment_bytes);
+            *slave_config = SlaveConfig::new(slave_node, slave_data_vec, slave_file_segment_bytes, slave_replicas_sync_num);
         }
     }
     
@@ -177,6 +182,9 @@ fn data_read_write() -> JoinHandle<()> {
                                     }
                                 }
                                 SlaveMessage::batch_insert(batch) => {
+                                    
+                                    
+                                    
                                     let batch_return =
                                         controls::batch_insert::batch_insert_data(batch).await;
 
@@ -260,9 +268,11 @@ fn data_read_write() -> JoinHandle<()> {
 
                                 match tokio::fs::metadata(&temp_path).await {
                                     Ok(_) => {
-                                        tokio::fs::remove_dir_all(temp_path).await.unwrap();
+                                        tokio::fs::remove_file(temp_path).await.unwrap();
                                     }
-                                    Err(_) => {}
+                                    Err(_) => {
+                                        
+                                    }
                                 }
                             }
 

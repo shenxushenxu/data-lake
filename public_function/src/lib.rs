@@ -80,6 +80,7 @@ pub struct SlaveConfig {
     pub slave_node: String,
     pub slave_data: Vec<String>,
     pub slave_file_segment_bytes: usize,
+    pub slave_replicas_sync_num: usize,
     pub data_path_index: usize,
 }
 
@@ -88,12 +89,14 @@ impl SlaveConfig {
         slave_node: String,
         slave_data: Vec<String>,
         slave_file_segment_bytes: usize,
+        slave_replicas_sync_num: usize
     ) -> Self {
         SlaveConfig {
             slave_node: slave_node,
             slave_data: slave_data,
             slave_file_segment_bytes: slave_file_segment_bytes,
-            data_path_index: 0,
+            slave_replicas_sync_num: slave_replicas_sync_num,
+            data_path_index: 0
         }
     }
 
@@ -124,7 +127,7 @@ pub static MASTER_CONFIG: LazyLock<Mutex<MasterConfig>> = LazyLock::new(|| {
 });
 
 pub static SLAVE_CONFIG: LazyLock<Mutex<SlaveConfig>> =
-    LazyLock::new(|| Mutex::new(SlaveConfig::new("".to_string(), vec!["".to_string()], 0)));
+    LazyLock::new(|| Mutex::new(SlaveConfig::new("".to_string(), vec!["".to_string()], 0,0)));
 
 
 
@@ -202,7 +205,9 @@ pub async fn get_list_filename(partition_code: &str) -> Vec<(String, String)> {
                         .to_string();
                     let file_path = file_entry_path.display().to_string();
 
-                    file_name_vec.push((file_name, file_path));
+                    if !file_name.contains("temp_") {
+                        file_name_vec.push((file_name, file_path));
+                    }
                 }
             }
         }
@@ -242,9 +247,12 @@ pub async fn get_partition_path(partition_code: &str) -> String {
 发送异常
 **/
 pub async fn write_error(err: DataLakeError, write_half: &mut WriteHalf<'_>) {
+    
+    let addr = write_half.local_addr().unwrap().to_string();
+    
     write_half.write_i32(-2).await.unwrap();
 
-    let err_mess = format!("{}", err);
+    let err_mess = format!("{} ERROR: {}", addr, err);
     let bytes = err_mess.as_bytes();
     let bytes_len = bytes.len();
 
@@ -263,7 +271,7 @@ pub async fn read_error(stream: &mut TcpStream) -> Result<(), DataLakeError> {
         let mut mess = vec![0u8; len as usize];
         stream.read_exact(&mut mess).await?;
         let dd = String::from_utf8(mess)?;
-        return Err(DataLakeError::CustomError(dd));
+        return Err(DataLakeError::custom(dd));
     }
 
     return Ok(());

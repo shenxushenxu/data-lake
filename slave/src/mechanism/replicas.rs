@@ -28,7 +28,9 @@ pub async fn follower_replicas_sync(replicas_sync_struct: &ReplicasSyncStruct) -
 
     let mut metadata_mmap = unsafe {MmapMut::map_mut(&metadata_file)?};
     let file_end_offset = i64::from_be_bytes((&metadata_mmap[..]).try_into().unwrap());
-
+    
+    
+    // println!("同步的最大offset：：：：{}  {}",slave_parti_name,  file_end_offset);
 
     
     let sync_message = SyncMessage {
@@ -48,11 +50,12 @@ pub async fn follower_replicas_sync(replicas_sync_struct: &ReplicasSyncStruct) -
         let mut return_mess_bytes = vec![0u8; return_mess_len as usize];
         tcp_stream
             .read_exact(return_mess_bytes.as_mut_slice())
-            .await
-            .unwrap();
+            .await?;
 
-        let replicase_sync_data =
-            bincode::deserialize::<ReplicaseSyncData>(&mut return_mess_bytes.as_slice())?;
+        let replicase_sync_data = bincode::deserialize::<ReplicaseSyncData>(return_mess_bytes.as_slice())?;
+
+        
+        
         let offset_set = replicase_sync_data.offset_set;
         let data_set = replicase_sync_data.data_set;
         let index_code = replicase_sync_data.index_code;
@@ -64,19 +67,20 @@ pub async fn follower_replicas_sync(replicas_sync_struct: &ReplicasSyncStruct) -
         let new_log_file_path = format!("{}/log/{}.snappy", partition_path, index_code);
 
         let mut index_file = OpenOptions::new()
-            .write(true)
+            .append(true)
             .create(true)
             .open(new_index_file_path)
             .await?;
         let mut log_file = OpenOptions::new()
-            .write(true)
+            .append(true)
             .create(true)
             .open(new_log_file_path)
             .await?;
 
         index_file.write_all(offset_set.as_slice()).await?;
         log_file.write_all(data_set.as_slice()).await?;
-
+        index_file.flush().await?;
+        log_file.flush().await?;
         unsafe {
             let offset_set_len = offset_set.len();
             let return_end_offset = &offset_set[(offset_set_len - INDEX_SIZE)..offset_set_len ];
@@ -90,6 +94,13 @@ pub async fn follower_replicas_sync(replicas_sync_struct: &ReplicasSyncStruct) -
 
             std::ptr::copy_nonoverlapping(src_ptr, dst_ptr, slice.len());
         }
+    }else if return_mess_len == -2 {
+        let len = tcp_stream.read_i32().await?;
+
+        let mut mess = vec![0u8;len as usize];
+        tcp_stream.read_exact(&mut mess).await?;
+
+        println!("{}", String::from_utf8(mess)?);
     }
     
     return Ok(());
@@ -116,8 +127,7 @@ pub async fn Leader_replicas_sync(sync_message: &SyncMessage) -> Result<Option<R
                 return true;
             }
             return false;
-        })
-        .collect::<Vec<&(String, String)>>();
+        }).collect::<Vec<&(String, String)>>();
 
     file_vec.sort_by_key(|x1| {
         let file_name = &x1.0;
@@ -172,17 +182,49 @@ pub async fn find_data(index_path: &String, offset: i64) -> Result<Option<Replic
         return Ok(None);
     }
 
+    
+    
+    
+    let slave_replicas_sync_num = {
+        let slave_config = SLAVE_CONFIG.lock().await;
+        let slave_replicas_sync_num = slave_config.slave_replicas_sync_num;
+        slave_replicas_sync_num
+    };
+    
+    
+    let mut index_end_seek = start_seek + (INDEX_SIZE * slave_replicas_sync_num);
+    let index_len = index_mmap.len();
+    
+    if index_len < index_end_seek {
+        index_end_seek = index_len;
+    }
+    
+    
     // 获得索引
-    let offset_set = &index_mmap[start_seek..];
+    let offset_set = &index_mmap[start_seek..index_end_seek];
 
+    
+    
     // 获得 数据
-    let data_start_seek = start_index.unwrap().start_seek;
-    let mut snappy_file = OpenOptions::new()
+    let data_start_seek = { 
+        let start_offset = &offset_set[0..INDEX_SIZE];
+        let start_index_struct = bincode::deserialize::<IndexStruct>(start_offset)?;
+        start_index_struct.start_seek as usize
+    };
+    let data_end_seek = {
+        let offset_set_len = offset_set.len();
+        let start_offset = &offset_set[(offset_set_len - INDEX_SIZE)..offset_set_len];
+        let start_index_struct = bincode::deserialize::<IndexStruct>(start_offset)?;
+        start_index_struct.end_seek as usize
+    };
+    
+    let snappy_file = OpenOptions::new()
         .read(true)
         .open(index_path.replace(".index", ".snappy"))
         .await?;
     let snappy_file_mmap = unsafe { Mmap::map(&snappy_file)?};
-    let data_set = &snappy_file_mmap[(data_start_seek as usize)..];
+    
+    let data_set = &snappy_file_mmap[data_start_seek..data_end_seek];
 
     let path = Path::new(index_path);
 

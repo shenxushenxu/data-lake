@@ -29,6 +29,8 @@ use tokio::task::JoinHandle;
 use uuid::Uuid;
 use crate::controls::max_offset::get_max_offset;
 
+
+
 /**
 -1 是停止
 -2 是异常
@@ -66,7 +68,7 @@ async fn main() {
 
     let master_main = data_interface();
     let replicas_sync = copy_sync_notif();
-    println!("master  启动成功.......");
+    
     tokio::join!(master_main, replicas_sync);
 }
 
@@ -99,8 +101,8 @@ fn data_interface() -> JoinHandle<()> {
                             read.read_exact(message.as_mut_slice()).await.unwrap();
 
                             let message_str = String::from_utf8(message).unwrap();
-
-                            let statement: Statement = serde_json::from_str(&message_str).unwrap();
+                            
+                            let statement = serde_json::from_str::<Statement>(&message_str).unwrap();
 
                             match statement {
                                 Statement::sql(daql) => match daql_analysis_function(&daql).await {
@@ -238,16 +240,24 @@ fn data_interface() -> JoinHandle<()> {
                                     let stream_return = stream_read_data(stream_read, uuid_arc.as_ref()).await;
 
                                     match stream_return {
-                                        Ok(mut receiver) => {
-                                            while let Some(message) = receiver.recv().await {
-                                                if let Some(message_bytes) = message {
-                                                    write
-                                                        .write_i32(message_bytes.len() as i32)
-                                                        .await
-                                                        .unwrap();
-                                                    write.write_all(&message_bytes).await.unwrap();
+                                        Ok(mut vec_data) => {
+                                            
+                                            if let Some(data) = vec_data {
+                                                for datum in data.iter() {
+                                                    write.write_i32(datum.len() as i32).await.unwrap();
+                                                    write.write_all(&datum).await.unwrap();
                                                 }
                                             }
+                                            
+                                            // while let Some(message) = receiver.recv().await {
+                                            //     if let Some(message_bytes) = message {
+                                            //         write
+                                            //             .write_i32(message_bytes.len() as i32)
+                                            //             .await
+                                            //             .unwrap();
+                                            //         write.write_all(&message_bytes).await.unwrap();
+                                            //     }
+                                            // }
                                             write.write_i32(-1).await.unwrap();
                                         }
                                         Err(e) => {
@@ -257,6 +267,9 @@ fn data_interface() -> JoinHandle<()> {
                                 }
 
                                 Statement::batch_insert(batch_insert) => {
+
+                                    
+                                    
                                     let data = &batch_insert.data;
                                     let table_name = batch_insert.table_name;
                                     let partition_code = batch_insert.partition_code;
@@ -266,10 +279,7 @@ fn data_interface() -> JoinHandle<()> {
                                         .decompress_vec(data)
                                         .unwrap_or_else(|e| panic!("解压失败: {}", e));
                                     let message_str = std::str::from_utf8(&message_bytes).unwrap();
-                                    let hashmap = serde_json::from_str::<
-                                        Vec<HashMap<String, String>>,
-                                    >(message_str)
-                                    .unwrap();
+                                    let hashmap = serde_json::from_str::<Vec<HashMap<String, String>>>(message_str).unwrap();
 
                                     let batch = BatchInsertTruth {
                                         table_name: table_name,

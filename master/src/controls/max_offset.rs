@@ -35,7 +35,7 @@ pub async fn get_max_offset(table_name: &String) -> Result<HashMap<usize, i64>, 
                 data_lake_tcpstream.read_exact(message.as_mut_slice()).await?;
 
                 let message_str = String::from_utf8(message)?;
-                return Err(DataLakeError::CustomError(message_str));
+                return Err(DataLakeError::custom(message_str));
 
             }else {
                 let mut message = vec![0; mes_len as usize];

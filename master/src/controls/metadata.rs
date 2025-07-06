@@ -32,7 +32,7 @@ pub async fn get_table_path(table_name: &str) -> Result<String, DataLakeError> {
         }
     }
 
-    return Err(DataLakeError::CustomError(format!(
+    return Err(DataLakeError::custom(format!(
         "{} The table does not exist.",
         table_name
     )));

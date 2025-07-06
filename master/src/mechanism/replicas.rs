@@ -6,6 +6,7 @@ use tokio::fs::OpenOptions;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tokio::task::JoinHandle;
+use entity_lib::entity::Error::DataLakeError;
 
 pub fn copy_sync_notif() -> JoinHandle<()> {
     tokio::spawn(async move {
@@ -73,7 +74,7 @@ pub fn copy_sync_notif() -> JoinHandle<()> {
                                 let follower_address = &partition_info.address;
                                 
                                 let replicas_sync_struct = ReplicasSyncStruct {
-                                    slave_parti_name: partiti_name,
+                                    slave_parti_name: partiti_name.clone(),
                                     leader_address: leader_ress,
                                 };
                                 let slave_message =
@@ -99,7 +100,7 @@ pub fn copy_sync_notif() -> JoinHandle<()> {
                                     let mut mass = vec![0u8; mass_len as usize];
                                     follower_tcpstream.read_exact(&mut mass[..]).await.unwrap();
                                     let massage = std::str::from_utf8(&mass).unwrap();
-                                    eprintln!("ERROR:  {}", massage);
+                                    panic!("同步 {} 报错 :{}", partiti_name, massage);
                                 }
                             });
                         }

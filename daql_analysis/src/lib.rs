@@ -57,5 +57,5 @@ pub async fn daql_analysis_function<'a>(daql: &'a str) -> Result<DaqlType, DataL
         return Ok(DaqlType::MAX_OFFSET(table_name));
     }
 
-    return Err(DataLakeError::CustomError(format!("{}  语句错误", sql)));
+    return Err(DataLakeError::custom(format!("{}  语句错误", sql)));
 }

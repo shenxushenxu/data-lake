@@ -80,14 +80,12 @@ pub async fn insert_operation(insert: Insert) -> Result<(), DataLakeError>{
             );
 
             let mut log_file = OpenOptions::new()
-                .write(true)
                 .create(true)
                 .append(true)
                 .open(log_file_path)
                 .await?;
 
             let mut index_file = OpenOptions::new()
-                .write(true)
                 .create(true)
                 .append(true)
                 .open(index_file_path)

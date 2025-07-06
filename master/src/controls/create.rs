@@ -20,7 +20,7 @@ pub async fn create_table(table_structure: TableStructure) -> Result<(), DataLak
 
         let path = Path::new(file_path.as_str());
         if path.exists() {
-            return Err(DataLakeError::CustomError(format!(
+            return Err(DataLakeError::custom(format!(
                 "{} The table already exists.",
                 table_structure.table_name
             )));
@@ -50,7 +50,7 @@ pub async fn create_table(table_structure: TableStructure) -> Result<(), DataLak
             if massage_len == -2 {
                 let mut massage = vec![0u8; massage_len as usize];
                 stream.read_exact(massage.as_mut_slice()).await?;
-                return Err(DataLakeError::CustomError(String::from_utf8(massage)?));
+                return Err(DataLakeError::custom(String::from_utf8(massage)?));
             }
         }
     }
