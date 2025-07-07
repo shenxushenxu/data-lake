@@ -74,6 +74,24 @@ cargo run --release -- masterip:masterprot
 {"sql":"drop table_name"}
 ## 批量插入数据：
 <br>{"batch_insert":{"data":[{"id":"0","_crud_type":"insert","username":"data-lake","age":"1","xingbie":"0"},{"id":"1","_crud_type":"insert","username":"data-lake","age":"1","xingbie":"0"},{"id":"2","_crud_type":"insert","username":"data-lake","age":"1","xingbie":"0"},{"id":"3","_crud_type":"insert","username":"data-lake","age":"1","xingbie":"0"},{"id":"4","_crud_type":"insert","username":"data-lake","age":"1","xingbie":"0"},{"id":"5","_crud_type":"insert","username":"data-lake","age":"1","xingbie":"0"},{"id":"6","_crud_type":"insert","username":"data-lake","age":"1","xingbie":"0"},{"id":"7","_crud_type":"insert","username":"data-lake","age":"1","xingbie":"0"},{"id":"8","_crud_type":"insert","username":"data-lake","age":"1","xingbie":"0"},{"id":"9","_crud_type":"insert","username":"data-lake","age":"1","xingbie":"0"},{"id":"10","_crud_type":"insert","username":"data-lake","age":"1","xingbie":"0"}],"table_name":"table_name"}}
+
+## 指定分区号，批量插入数据：
+<br>{"batch_insert":{"data":[{"id":"0","_crud_type":"insert","username":"data-lake","age":"1","xingbie":"0"},{"id":"1","_crud_type":"insert","username":"data-lake","age":"1","xingbie":"0"},{"id":"2","_crud_type":"insert","username":"data-lake","age":"1","xingbie":"0"},{"id":"3","_crud_type":"insert","username":"data-lake","age":"1","xingbie":"0"},{"id":"4","_crud_type":"insert","username":"data-lake","age":"1","xingbie":"0"},{"id":"5","_crud_type":"insert","username":"data-lake","age":"1","xingbie":"0"},{"id":"6","_crud_type":"insert","username":"data-lake","age":"1","xingbie":"0"},{"id":"7","_crud_type":"insert","username":"data-lake","age":"1","xingbie":"0"},{"id":"8","_crud_type":"insert","username":"data-lake","age":"1","xingbie":"0"},{"id":"9","_crud_type":"insert","username":"data-lake","age":"1","xingbie":"0"},{"id":"10","_crud_type":"insert","username":"data-lake","age":"1","xingbie":"0"}],"partition_code":"0","table_name":"table_name"}}
+- 如果使用了 partition_code 参数，指定了插入的批量数据的分区，尽量与data-lake master 的分区方式一致:
+`````
+ fn hash_code(&self) -> i32 {
+  let mut hash = 0i32;
+  let multiplier = 31;
+  for c in self.chars() {
+  let char_value = c as i32;
+  hash = hash.wrapping_mul(multiplier).wrapping_add(char_value);
+  }
+  return hash.abs();
+  }
+`````
+也就是java 的String的hashCode 方法，并对hashcode 取绝对值
+
+
 ## 查询表内的数据：
 <br>{"sql":"select username, age from table_name"}
 ## 添加列
@@ -88,7 +106,7 @@ cargo run --release -- masterip:masterprot
 ## 消费表内的数据：
 ### 从头开始消费：
 {"stream_read":{"patition_mess":[],"table_name":"table_name","read_count":1000}}
-### 指定从指定的offset处开始消费：
+### 从指定的offset处开始消费：
 {"stream_read":{"patition_mess":[{"patition_code":0,"offset":249991},{"patition_code":1,"offset":249991},{"patition_code":2,"offset":249991},{"patition_code":3,"offset":249991}],"table_name":"table_name","read_count":1000}}
 
 

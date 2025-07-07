@@ -30,3 +30,7 @@ pub const PLAINTEXT_FILE_EXTENSION:&str = ".log";
 
 // 存储最大offset的文件
 pub const METADATA_LOG:&str = "metadata.log";
+
+
+// i32 的字节长度
+pub const I32_BYTE_LEN:usize = mem::size_of::<i32>();

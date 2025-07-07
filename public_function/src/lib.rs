@@ -2,6 +2,7 @@ pub mod PosttingTcpStream;
 pub mod RandomNumber;
 pub mod read_function;
 pub mod string_trait;
+pub mod vec_trait;
 
 use entity_lib::entity::Error::DataLakeError;
 use std::collections::HashMap;
