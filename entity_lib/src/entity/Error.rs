@@ -1,5 +1,4 @@
 use core::fmt::{Debug, Display};
-use std::io::Error;
 use std::num::{ParseFloatError, ParseIntError};
 use std::panic::Location;
 use std::str::{ParseBoolError, Utf8Error};
@@ -148,7 +147,7 @@ impl std::error::Error for DataLakeError {}
 
 impl From<std::io::Error> for DataLakeError {
     #[track_caller]
-    fn from(value: Error) -> Self {
+    fn from(value: std::io::Error) -> Self {
         DataLakeError::IoError{
             source: value,
             location: Location::caller()

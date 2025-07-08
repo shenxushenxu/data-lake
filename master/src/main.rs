@@ -6,7 +6,7 @@ use crate::controls::batch_insert::INSERT_TCPSTREAM_CACHE_POOL;
 use crate::controls::compress_table::compress_table;
 use crate::controls::create::create_table;
 use crate::controls::drop_table::drop_table_operation;
-use crate::controls::metadata::get_metadata;
+use crate::controls::metadata::{get_metadata, get_table_metadata};
 use crate::controls::query::query_daql;
 use crate::controls::stream_read::{STREAM_TCP_TABLESTRUCTURE, stream_read_data};
 use crate::mechanism::replicas::copy_sync_notif;
@@ -164,7 +164,7 @@ fn data_interface() -> JoinHandle<()> {
                                             }
                                         }
                                         DaqlType::SHOW_TABLE(table_name) => {
-                                            let metadata_return = get_metadata(&table_name).await;
+                                            let metadata_return = get_table_metadata(&table_name).await;
                                             match metadata_return {
                                                 Ok(table_structure) => {
                                                     let metadtat_message =

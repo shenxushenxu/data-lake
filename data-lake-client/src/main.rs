@@ -68,9 +68,9 @@ async fn main() {
                         let table_structure_len = stream.read_i32().await.unwrap();
                         let mut table_structure = vec![0; table_structure_len as usize];
                         stream.read_exact(&mut table_structure).await.unwrap();
-                        let tablestructure = serde_json::from_slice::<TableStructure>(&table_structure).unwrap();
+                        let ts_str = String::from_utf8(table_structure).unwrap();
                         
-                        println!("{:?}", tablestructure)
+                        println!("{}", ts_str)
                         
                     }else if mess_len == -4 {
                         let offset_map_len = stream.read_i32().await.unwrap();

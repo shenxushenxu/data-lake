@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::fmt::{write, Display, Formatter};
+use serde_json::json;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum DataType {
@@ -10,15 +12,41 @@ pub enum DataType {
     long,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub enum ColumnConfigJudgment {
-    PRIMARY_KEY,
-    NOT_NULL,
-    DEFAULT,
-    NOT
+impl Display for DataType {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            DataType::string => {write!(f, "string")}
+            DataType::int => {write!(f, "int")}
+            DataType::float => {write!(f, "float")}
+            DataType::boolean => {write!(f, "boolean")}
+            DataType::long => {write!(f, "long")}
+        }
+    }
 }
 
 
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub enum ColumnConfigJudgment {
+    // 主键
+    PRIMARY_KEY,
+    // 插入的值不能为null
+    NOT_NULL,
+    // 插入的值可以为null，为null则为默认值
+    DEFAULT,
+    
+    NOT
+}
+
+impl Display for ColumnConfigJudgment {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ColumnConfigJudgment::PRIMARY_KEY => {write!(f, "PRIMARY_KEY")}
+            ColumnConfigJudgment::NOT_NULL => {write!(f, "NOT_NULL")}
+            ColumnConfigJudgment::DEFAULT => {write!(f, "DEFAULT")}
+            ColumnConfigJudgment::NOT => {write!(f, "NOT")}
+        }
+    }
+}
 /*
 create 语句的 struct 类
 */
@@ -128,12 +156,33 @@ pub enum Info{
     Leader,
     Follower
 }
+impl Display for Info {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Info::Leader => {write!(f, "Leader")}
+            Info::Follower => {write!(f, "Follower")}
+        }
+    }
+}
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PartitionInfo{
     pub address: String,
     pub info: Info,
 }
+
+impl Display for PartitionInfo {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let value = json!({
+            "address": self.address,
+            "info": self.info
+        }).to_string();
+        
+        
+        write!(f, "{}", value)
+    }
+}
+
 
 
 /**
