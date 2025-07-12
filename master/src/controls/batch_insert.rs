@@ -21,13 +21,19 @@ pub async fn batch_insert_data(
     batch_insert: BatchInsertTruth,
     uuid: Arc<String>,
 ) -> Result<(), DataLakeError> {
+
+    let vec_data_map = batch_insert.data;
+    
+    if vec_data_map.len() == 0 {
+        return Ok(());
+    }
+    
+    
     let table_name = &batch_insert.table_name;
     let mut table_structure = get_metadata(&table_name).await?;
 
     let mut res_map = HashMap::<i32, Vec<HashMap<String, String>>>::new();
-
-    let vec_data_map = batch_insert.data;
-
+    
     match &batch_insert.partition_code {
         None => {
             let major_key = &table_structure.major_key;

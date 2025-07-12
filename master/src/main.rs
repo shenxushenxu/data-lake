@@ -249,15 +249,6 @@ fn data_interface() -> JoinHandle<()> {
                                                 }
                                             }
                                             
-                                            // while let Some(message) = receiver.recv().await {
-                                            //     if let Some(message_bytes) = message {
-                                            //         write
-                                            //             .write_i32(message_bytes.len() as i32)
-                                            //             .await
-                                            //             .unwrap();
-                                            //         write.write_all(&message_bytes).await.unwrap();
-                                            //     }
-                                            // }
                                             write.write_i32(-1).await.unwrap();
                                         }
                                         Err(e) => {

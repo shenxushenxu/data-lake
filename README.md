@@ -116,6 +116,9 @@ cargo run --release -- masterip:masterprot
 
 
 
+# java客户端
+https://github.com/shenxushenxu/data-lake-java-client
+
 # 持续开发中
 1. 实现标准SQL查询接口支持(开发中.....)
 2. 添加副本机制(完成)
