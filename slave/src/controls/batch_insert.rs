@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::io::SeekFrom;
 use std::mem;
+use std::time::Instant;
 use memmap2::MmapMut;
 use snap::raw::Encoder;
 use tokio::fs::OpenOptions;
@@ -16,44 +17,27 @@ use crate::controls::insert_data::FILE_CACHE_POOL;
 
 
 
-// trait VecPutVec{
-//     fn put_vec(&mut self, vec: &mut Vec<u8>);
-//     fn put_i32_vec(&mut self, val: i32);
-// }
-// 
-// impl VecPutVec for Vec<u8>{
-//     fn put_vec(&mut self, vec: &mut Vec<u8>) {
-//         self.append(vec);
-//     }
-// 
-//     fn put_i32_vec(&mut self, val: i32) {
-//         let byte_val = val.to_be_bytes();
-//         for byte in byte_val {
-//             self.push(byte);
-//         }
-//     }
-// }
 
 
 
 
 
 pub async  fn batch_insert_data(batch_insert: SlaveInsert) -> Result<(), DataLakeError>{
-    insert_operation(&batch_insert).await?;
 
+    insert_operation(&batch_insert).await?;
+    
+    
+    
     return Ok(());
 }
 
 
 pub async fn insert_operation(batch_insert: &SlaveInsert) -> Result<(), DataLakeError> {
 
-
     
-    
-
     let table_name = &batch_insert.table_name;
     let partition_code = &batch_insert.partition_code;
-    let batch_insert_data = &batch_insert.data;
+    let batch_insert_data = bincode::deserialize::<Vec<HashMap<String, String>>>(&batch_insert.data)?;
     let table_structure = &batch_insert.table_structure;
     let major_key = &table_structure.major_key;
     
@@ -139,8 +123,7 @@ pub async fn insert_operation(batch_insert: &SlaveInsert) -> Result<(), DataLake
 
     let mut data_vec = Vec::<u8>::new();
     let mut index_vec = Vec::<u8>::new();
-    
-    
+
     for insert_single in batch_insert_data.iter() {
         
         batch_format_matching(insert_single, table_structure).await?;
@@ -207,7 +190,6 @@ pub async fn insert_operation(batch_insert: &SlaveInsert) -> Result<(), DataLake
         let slave_config = SLAVE_CONFIG.lock().await;
         slave_config.slave_file_segment_bytes as u64
     };
-    
     let data_file_seek = data_file.seek(SeekFrom::End(0)).await?;
     
     if data_file_seek > slave_file_segment_bytes{
@@ -217,7 +199,7 @@ pub async fn insert_operation(batch_insert: &SlaveInsert) -> Result<(), DataLake
 
         mutex_map.remove(&file_key);
     }
-    
+
     return Ok(());
 }
 

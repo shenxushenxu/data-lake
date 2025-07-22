@@ -27,6 +27,8 @@ use tokio::sync::Mutex;
 use tokio::sync::mpsc::Receiver;
 use tokio::task::JoinHandle;
 use uuid::Uuid;
+use entity_lib::entity::DataLakeEntity::BatchData;
+use entity_lib::entity::MasterEntity::Statement::batch_insert;
 use crate::controls::max_offset::get_max_offset;
 
 
@@ -257,31 +259,22 @@ fn data_interface() -> JoinHandle<()> {
                                     }
                                 }
 
-                                Statement::batch_insert(batch_insert) => {
-
+                                Statement::batch_insert => {
                                     
+                                    let batch_data_len = read.read_i32().await.unwrap();
+                                    let mut batch_data = vec![0; batch_data_len as usize];
+                                    read.read_exact(batch_data.as_mut_slice()).await.unwrap();
                                     
-                                    let data = &batch_insert.data;
-                                    let table_name = batch_insert.table_name;
-                                    let partition_code = batch_insert.partition_code;
-
                                     let mut decoder = Decoder::new();
                                     let message_bytes = decoder
-                                        .decompress_vec(data)
+                                        .decompress_vec(&batch_data)
                                         .unwrap_or_else(|e| panic!("解压失败: {}", e));
-                                    let message_str = std::str::from_utf8(&message_bytes).unwrap();
-                                    let hashmap = serde_json::from_str::<Vec<HashMap<String, String>>>(message_str).unwrap();
-
-                                    let batch = BatchInsertTruth {
-                                        table_name: table_name,
-                                        data: hashmap,
-                                        partition_code: partition_code,
-                                    };
-
-
+                                    
+                                    let batch_data = bincode::deserialize::<BatchData>(&message_bytes).unwrap();
+                                    
                                     let arc_uuid_clone = Arc::clone(&uuid_arc);
                                     let batch_return =
-                                        controls::batch_insert::batch_insert_data(batch, arc_uuid_clone)
+                                        controls::batch_insert::batch_insert_data(&batch_data, arc_uuid_clone)
                                             .await;
 
                                     match batch_return {
@@ -293,6 +286,10 @@ fn data_interface() -> JoinHandle<()> {
                                         }
                                     }
                                 }
+                                
+                                
+                                
+                                
                             }
                         }
 

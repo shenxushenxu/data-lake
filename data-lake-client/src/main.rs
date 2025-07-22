@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use snap::raw::{Decoder, Encoder};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
-use entity_lib::entity::MasterEntity::{BatchInsert, Statement, TableStructure};
+use entity_lib::entity::MasterEntity::{Statement, TableStructure};
 use crate::controls::stream_read_logic::Consumer;
 use crate::entity::ClientStatement;
 
@@ -126,13 +126,13 @@ async fn main() {
                 let mut encoder = Encoder::new();
                 let compressed_data = encoder.compress_vec(data_str.as_bytes()).unwrap();
 
-                let batchinsert = BatchInsert{
-                    table_name: table_name,
-                    data: compressed_data,
-                    partition_code: partition_code
-                };
+                // let batchinsert = BatchInsert{
+                //     table_name: table_name,
+                //     data: compressed_data,
+                //     partition_code: partition_code
+                // };
 
-                let state = Statement::batch_insert(batchinsert);
+                let state = Statement::batch_insert;
 
                 let write_data = serde_json::to_string(&state).unwrap();
                 let data_bytes = write_data.as_bytes();

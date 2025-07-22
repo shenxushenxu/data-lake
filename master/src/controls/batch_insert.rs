@@ -1,66 +1,66 @@
 use crate::controls::metadata::get_metadata;
 use entity_lib::entity::Error::DataLakeError;
-use entity_lib::entity::MasterEntity::{
-    BatchInsertTruth, ColumnConfigJudgment, DataType, Info, PartitionInfo, SlaveBatchData,
-    SlaveInsert, TableStructure,
-};
+use entity_lib::entity::MasterEntity::SlaveInsert;
 use entity_lib::entity::SlaveEntity::SlaveMessage;
 use public_function::PosttingTcpStream::DataLakeTcpStream;
 use public_function::string_trait::StringFunction;
 use std::collections::HashMap;
 use std::sync::{Arc, LazyLock};
+use std::time::Instant;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::net::TcpStream;
 use tokio::sync::Mutex;
-use tokio::task::JoinError;
+use entity_lib::entity::DataLakeEntity::BatchData;
+
 
 pub static INSERT_TCPSTREAM_CACHE_POOL: LazyLock<Mutex<HashMap<String, DataLakeTcpStream>>> =
     LazyLock::new(|| Mutex::new(HashMap::<String, DataLakeTcpStream>::new()));
 
 pub async fn batch_insert_data(
-    batch_insert: BatchInsertTruth,
+    batch_data: &BatchData,
     uuid: Arc<String>,
 ) -> Result<(), DataLakeError> {
 
-    let vec_data_map = batch_insert.data;
-    
+    let vec_data_map = &batch_data.data;
     if vec_data_map.len() == 0 {
         return Ok(());
     }
     
     
-    let table_name = &batch_insert.table_name;
+    let table_name = &batch_data.table_name;
     let mut table_structure = get_metadata(&table_name).await?;
 
-    let mut res_map = HashMap::<i32, Vec<HashMap<String, String>>>::new();
-    
-    match &batch_insert.partition_code {
+    let mut res_map = HashMap::<i32, Vec<HashMap<&String, &String>>>::new();
+
+
+    match &batch_data.partition_code{
         None => {
             let major_key = &table_structure.major_key;
             let partition_number = table_structure.partition_number as i32;
-            for data_map in vec_data_map {
-                match data_map.get(major_key) {
-                    None => {
-                        return Err(DataLakeError::custom(format!(
-                            "{:?}  这行数据没有主键列 {}",
-                            data_map, major_key
-                        )));
-                    }
-                    Some(major_value) => {
-                        let partition_code = major_value.hash_code() % partition_number;
-                        res_map
-                            .entry(partition_code)
-                            .or_insert(Vec::<HashMap<String, String>>::new())
-                            .push(data_map);
-                    }
-                }
+            if !batch_data.is_column(major_key) {
+                return Err(DataLakeError::custom(format!(
+                    " 数据没有主键列 {}",
+                     major_key
+                )));
+            }
+
+            for index in 0..batch_data.get_data_size() {
+                let line_map = batch_data.get_line_map(index);
+                let major_value = line_map.get(major_key).unwrap();
+                let partition_code = major_value.hash_code() % partition_number ;
+
+                res_map.entry(partition_code)
+                    .or_insert(Vec::<HashMap<&String, &String>>::new())
+                    .push(line_map);
             }
         }
-        Some(specified_partition_code) => {
-            let partition_code = specified_partition_code.parse::<i32>()?;
-            res_map.entry(partition_code).or_insert(vec_data_map);
+        Some(partition_code) => {
+            let vec_map = batch_data.get_map();
+            res_map.insert(partition_code.clone(), vec_map);
         }
     }
+
+
+
 
     let mut join_handle_set = tokio::task::JoinSet::new();
     for (partition_code, vec_map) in res_map {
@@ -70,19 +70,22 @@ pub async fn batch_insert_data(
         let table_structure_clone = table_structure.clone();
         
         let uuid_clone = Arc::clone(&uuid);
-        
-        
+
+        let data = bincode::serialize(&vec_map)?;
+
         join_handle_set.spawn(async move {
-            
+
+
             let mut partition_address = table_structure_clone.partition_address.clone();
             
             let slave_insert = SlaveInsert {
                 table_name: table_name_clone,
-                data: vec_map,
+                data: data,
                 partition_code: partition_code.to_string(),
                 table_structure: table_structure_clone,
             };
 
+            
             let slave_message = SlaveMessage::batch_insert(slave_insert);
 
             let bytes = bincode::serialize(&slave_message)?;
