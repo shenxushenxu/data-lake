@@ -12,6 +12,9 @@ snap = {workspace = true}
 log = {workspace = true}
 env_logger = {workspace = true}
 uuid = {workspace = true}
+rayon = {workspace = true}
+chrono = {workspace = true}
+dashmap = { workspace = true }
 
 entity_lib = {path = "../entity_lib"}
 public_function = {path = "../public_function"}

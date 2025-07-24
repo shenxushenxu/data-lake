@@ -4,7 +4,7 @@ mod mechanism;
 use crate::controls::compress_table::compress_table;
 use crate::controls::create_table::create_table_controls;
 use crate::controls::drop_table::drop_table_operation;
-use crate::controls::insert_data::insert_operation;
+// use crate::controls::insert_data::insert_operation;
 use crate::controls::query_table::query;
 use crate::controls::stream_read::stream_read;
 use entity_lib::entity::Error::DataLakeError;
@@ -15,6 +15,8 @@ use log::{error, info};
 use public_function::{load_properties, SlaveConfig, SLAVE_CONFIG};
 use std::path;
 use std::path::Path;
+use std::time::Instant;
+use chrono::{Datelike, Local, Timelike};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
 use tokio::sync::Mutex;
@@ -103,9 +105,12 @@ fn data_read_write() -> JoinHandle<()> {
 
                             read.read_exact(&mut message).await.unwrap();
 
+                            
+                            
+                            let start_now= Instant::now();
                             let slave_message =
                                 bincode::deserialize::<SlaveMessage>(&message).unwrap();
-
+                            println!(" slave_message::::::::    {:?}", start_now.elapsed());
                             match slave_message {
                                 SlaveMessage::create(create_message) => {
                                     let create_return = create_table_controls(create_message).await;
@@ -120,15 +125,15 @@ fn data_read_write() -> JoinHandle<()> {
                                     }
                                 }
                                 SlaveMessage::insert(insert) => {
-                                    let insert_data = insert_operation(insert).await;
-                                    match insert_data {
-                                        Ok(_) => {
-                                            write.write_i32(-1).await.unwrap();
-                                        }
-                                        Err(e) => {
-                                            public_function::write_error(e, &mut write).await;
-                                        }
-                                    }
+                                    // let insert_data = insert_operation(insert).await;
+                                    // match insert_data {
+                                    //     Ok(_) => {
+                                    //         write.write_i32(-1).await.unwrap();
+                                    //     }
+                                    //     Err(e) => {
+                                    //         public_function::write_error(e, &mut write).await;
+                                    //     }
+                                    // }
                                 }
                                 SlaveMessage::compress_table(table_name) => {
                                     let compress_return = compress_table(&table_name, &uuid).await;
@@ -182,8 +187,18 @@ fn data_read_write() -> JoinHandle<()> {
                                     }
                                 }
                                 SlaveMessage::batch_insert(batch) => {
-                                    
-                                    
+                                    let now = Local::now();
+                                    println!(
+                                        "slave {} 接收完成数据的时间： {}-{:02}-{:02} {:02}:{:02}:{:02}.{:03}",
+                                        batch.partition_code,
+                                        now.year(),
+                                        now.month(),
+                                        now.day(),
+                                        now.hour(),
+                                        now.minute(),
+                                        now.second(),
+                                        now.nanosecond() / 1_000_000
+                                    );
                                     
                                     let batch_return =
                                         controls::batch_insert::batch_insert_data(batch).await;

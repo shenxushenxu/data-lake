@@ -21,6 +21,8 @@ use snap::raw::{Decoder, Encoder};
 use std::any::Any;
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::Instant;
+use chrono::{Datelike, Local, Timelike};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
 use tokio::sync::Mutex;
@@ -102,6 +104,19 @@ fn data_interface() -> JoinHandle<()> {
 
                             read.read_exact(message.as_mut_slice()).await.unwrap();
 
+                            let now = Local::now();
+                            println!(
+                                "master接收完成数据的时间： {}-{:02}-{:02} {:02}:{:02}:{:02}.{:03}",
+                                now.year(),
+                                now.month(),
+                                now.day(),
+                                now.hour(),
+                                now.minute(),
+                                now.second(),
+                                now.nanosecond() / 1_000_000
+                            );
+                            
+                            
                             let message_str = String::from_utf8(message).unwrap();
                             
                             let statement = serde_json::from_str::<Statement>(&message_str).unwrap();
@@ -265,16 +280,18 @@ fn data_interface() -> JoinHandle<()> {
                                     let mut batch_data = vec![0; batch_data_len as usize];
                                     read.read_exact(batch_data.as_mut_slice()).await.unwrap();
                                     
+                                    let start_now= Instant::now();
                                     let mut decoder = Decoder::new();
                                     let message_bytes = decoder
                                         .decompress_vec(&batch_data)
                                         .unwrap_or_else(|e| panic!("解压失败: {}", e));
                                     
                                     let batch_data = bincode::deserialize::<BatchData>(&message_bytes).unwrap();
+                                    println!("  bincode::deserialize::<BatchData>(&message_bytes).unwrap():  {:?}", start_now.elapsed());
                                     
                                     let arc_uuid_clone = Arc::clone(&uuid_arc);
                                     let batch_return =
-                                        controls::batch_insert::batch_insert_data(&batch_data, arc_uuid_clone)
+                                        controls::batch_insert::batch_insert_data(batch_data, arc_uuid_clone)
                                             .await;
 
                                     match batch_return {
@@ -294,34 +311,48 @@ fn data_interface() -> JoinHandle<()> {
                         }
 
                         Err(e) => {
-                            info!("{:?}", e);
+                            println!("{:?}",  e);
                             // 输入插入连接断开，清理缓存中的连接
-                            let mut remove_vec = Vec::<String>::new();
-                            let mut mutex_guard = INSERT_TCPSTREAM_CACHE_POOL.lock().await;
+                            /**
+                            操作	                     危险场景	                  规避方案
+                            iter()	     |   持有迭代器时尝试写操作（同线程）	  |   避免在迭代中修改当前 map
+                            get_mut()	 |   持有任意引用时调用	          |   缩短引用生命周期，尽快释放锁
+                            跨 map 访问	 |   线程间循环依赖（如 A→B, B→A）	  |  按固定顺序加锁或使用 try_get()
 
-                            mutex_guard.keys().for_each(|k| {
-                                if k.contains(uuid_arc.as_ref()) {
-                                    remove_vec.push(k.clone());
-                                }
-                            });
+                                                        **/
 
-                            remove_vec.iter().for_each(|k| {
-                                mutex_guard.remove(k).unwrap();
-                            });
+                            {
+                                let mut key_vec = Vec::<String>::new();
+                                let insert_tcpstream_cache_pool = Arc::clone(&INSERT_TCPSTREAM_CACHE_POOL);
 
+                                insert_tcpstream_cache_pool.iter().for_each(|x| {
+                                    let key = x.key();
+                                    if key.contains(uuid_arc.as_ref()) {
+                                        key_vec.push(key.clone());
+                                    }
+                                });
+
+                                key_vec.iter().for_each(|key| {
+                                    insert_tcpstream_cache_pool.remove(key);
+                                });
+                            }
+                        
+                            
+                            
                             // ----------  流消费连接断开，清理缓存中的连接
                             let mut remove_vec = Vec::<String>::new();
                             let mut mutex_guard = STREAM_TCP_TABLESTRUCTURE.lock().await;
-
+                            
                             mutex_guard.keys().for_each(|k| {
                                 if k.contains(uuid_arc.as_ref()) {
                                     remove_vec.push(k.clone());
                                 }
                             });
-
+                            
                             remove_vec.iter().for_each(|k| {
                                 mutex_guard.remove(k).unwrap();
                             });
+                            
                             break;
                         }
                     }

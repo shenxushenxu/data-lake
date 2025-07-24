@@ -70,13 +70,33 @@ pub struct SlaveCacheStruct{
     pub metadata_mmap: MmapMut,
 }
 
+impl SlaveCacheStruct{
+    pub fn get_data_file<'a>(&'a mut self) -> &'a mut File{
+        return &mut self.data_file;
+    }
+    pub fn get_index_file<'a>(&'a mut self) -> &'a mut File{
+        return &mut self.index_file;
+    }
+    pub fn get_metadata_mmap<'a>(&'a mut self) -> &'a mut MmapMut{
+        return &mut self.metadata_mmap;
+    }
+}
+
 
 /**
 index 的结构体
 **/
-#[derive(Serialize, Deserialize, Debug)]
+
+#[derive(Serialize,Deserialize, Debug)]
 pub struct IndexStruct{
-    pub offset:i64,
+    pub offset: i64,
+    pub start_seek: u64,
+    pub end_seek: u64,
+}
+
+#[derive(Serialize, Debug)]
+pub struct IndexStructSerialize<'a>{
+    pub offset: &'a i64,
     pub start_seek: u64,
     pub end_seek: u64,
 }
@@ -84,6 +104,17 @@ pub struct IndexStruct{
 /**
 数据落文件的  结构体
 **/
+#[derive(Serialize, Debug)]
+pub struct DataStructureSerialize<'a> {
+    pub table_name: &'a String,
+    pub major_value: &'a String,
+    pub data: HashMap<&'a String, &'a String>,
+    pub _crud_type: &'a String,
+    pub partition_code: &'a String,
+    pub offset: &'a i64
+}
+
+
 #[derive(Serialize, Deserialize, Debug)]
 pub struct DataStructure {
     pub table_name: String,
@@ -93,9 +124,6 @@ pub struct DataStructure {
     pub partition_code: String,
     pub offset: i64
 }
-
-
-
 
 /**
 流式读取的 struct

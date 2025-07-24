@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fmt::{write, Display, Formatter};
 use serde_json::json;
+use crate::entity::DataLakeEntity::SlaveBatchData;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum DataType {
@@ -86,16 +87,16 @@ pub struct Insert {
 }
 
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct SlaveBatchData{
-    pub major_key: String,
-    pub data: String,
-    pub _crud_type: String,
-}
+// #[derive(Serialize, Deserialize, Debug, Clone)]
+// pub struct SlaveBatchData{
+//     pub major_key: String,
+//     pub data: String,
+//     pub _crud_type: String,
+// }
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct SlaveInsert {
     pub table_name: String,
-    pub data: Vec<u8>,
+    pub data: SlaveBatchData,
     pub partition_code: String,
     pub table_structure: TableStructure
 }
