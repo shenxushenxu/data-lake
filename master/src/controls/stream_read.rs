@@ -48,12 +48,7 @@ pub async fn stream_read_data(
         let offset = parti.offset;
 
         let partition_info_vec = address_map.get(&partition_code).unwrap();
-
-     
-
         
-
-
         let partition_info = partition_info_vec.iter().filter(|x| {
             match x.info {
                 Info::Leader => {
@@ -122,10 +117,6 @@ pub async fn stream_read_data(
                         stream.read_exact(&mut message).await?;
 
                         return Ok(Some(message));
-                        
-                        // if let Err(e) = sen.send(Some(message)).await {
-                        //     println!("Error sending message: {:?}", e);
-                        // }
                     }
                 }
                 Err(e) => {

@@ -32,7 +32,7 @@ pub enum SlaveMessage{
     insert(Insert),
     compress_table(String),
     stream_read(StreamReadStruct),
-    batch_insert(SlaveInsert),
+    batch_insert,
     drop_table(String),
     follower_replicas_sync(ReplicasSyncStruct),
     leader_replicas_sync(SyncMessage),
@@ -106,22 +106,22 @@ pub struct IndexStructSerialize<'a>{
 **/
 #[derive(Serialize, Debug)]
 pub struct DataStructureSerialize<'a> {
-    pub table_name: &'a String,
-    pub major_value: &'a String,
-    pub data: HashMap<&'a String, &'a String>,
-    pub _crud_type: &'a String,
-    pub partition_code: &'a String,
+    pub table_name: &'a str,
+    pub major_value: &'a str,
+    pub data: &'a HashMap<&'a str, &'a str>,
+    pub _crud_type: &'a str,
+    pub partition_code: &'a str,
     pub offset: &'a i64
 }
 
 
 #[derive(Serialize, Deserialize, Debug)]
-pub struct DataStructure {
-    pub table_name: String,
-    pub major_value: String,
-    pub data: HashMap<String, String>,
-    pub _crud_type: String,
-    pub partition_code: String,
+pub struct DataStructure<'a> {
+    pub table_name: &'a str,
+    pub major_value: &'a str,
+    pub data: HashMap<&'a str, &'a str>,
+    pub _crud_type: &'a str,
+    pub partition_code: &'a str,
     pub offset: i64
 }
 

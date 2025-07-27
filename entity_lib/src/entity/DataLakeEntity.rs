@@ -7,15 +7,18 @@ use crate::entity::SlaveEntity::SlaveMessage;
 master 批量插入的 struct
 */
 #[derive(Serialize, Deserialize, Debug)]
-pub struct BatchData {
-    pub table_name: String,
-    pub column: Vec<String>,
-    pub data: Vec<Vec<String>>,
+pub struct BatchData<'a> {
+    pub table_name: &'a str,
+    pub column: Vec<&'a str>,
+    pub data: Vec<Vec<&'a str>>,
 }
 
-impl BatchData {
-    pub fn get_line(&mut self) -> Vec<String> {
-        return self.data.remove(self.get_data_size() - 1);
+impl <'a>BatchData<'a> {
+    pub fn get_line(&mut self, index: usize) -> Vec<&'a str> {
+        // return self.data.swap_remove(index);
+        unsafe {
+            return self.data.pop().unwrap_unchecked();
+        }
     }
 
     pub fn get_column_index(&self, column_name: &String) -> Result<usize, DataLakeError> {
@@ -28,10 +31,10 @@ impl BatchData {
         return Err(DataLakeError::custom(format!("{} 主键列不存在", column_name)));
     }
 
-    pub fn get_line_map(&self, index: usize) -> HashMap<&String, &String> {
+    pub fn get_line_map(&self, index: usize) -> HashMap<&'a str, &'a str> {
         let line_data = &self.data[index];
 
-        let mut map = HashMap::<&String, &String>::new();
+        let mut map = HashMap::<&'a str, &'a str>::new();
         for index in 0..line_data.len() {
             let column_name = &self.column[index];
             let value = &line_data[index];
@@ -40,15 +43,15 @@ impl BatchData {
 
         return map;
     }
-    pub fn is_column(&self, column_name: &String) -> bool {
-        return self.column.contains(column_name);
+    pub fn is_column(&self, column_name: &'a str) -> bool {
+        return self.column.contains(&column_name);
     }
 
-    pub fn get_map(&self) -> Vec<HashMap<&String, &String>> {
-        let mut vec = Vec::<HashMap<&String, &String>>::new();
+    pub fn get_map(&self) -> Vec<HashMap<&'a str, &'a str>> {
+        let mut vec = Vec::<HashMap<&'a str, &'a str>>::new();
         let size = self.column.len();
         for x_index in 0..self.get_data_size() {
-            let mut map = HashMap::<&String, &String>::new();
+            let mut map = HashMap::<&'a str, &'a str>::new();
             let line_data = &self.data[x_index];
             for index in 0..size {
                 let column_name = &self.column[index];
@@ -73,32 +76,33 @@ impl BatchData {
 slave 批量插入的 
 struct
 */
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct SlaveBatchData {
-    pub column: Vec<String>,
-    pub data: Vec<Vec<String>>,
+#[derive(Serialize,Deserialize ,Debug, Clone)]
+#[serde(bound(deserialize = "'de: 'a"))] // 确保“寿命超过”某物
+pub struct SlaveBatchData<'a> {
+    pub column: Vec<&'a str>,
+    pub data:  Vec<Vec<&'a str>>,
 }
-impl SlaveBatchData{
-    pub fn new (column: Vec<String>) -> Self {
+impl <'a> SlaveBatchData<'a>{
+    pub fn new (column: Vec<&'a str>) -> Self {
         return SlaveBatchData{
             column: column,
             data: Vec::new(),
         };
     }
-    pub fn push_data(&mut self, data: Vec<String>) {
+    pub fn push_data(&mut self, data: Vec<&'a str>) {
         self.data.push(data);
     }
 
-    pub fn get_map(&self) -> Vec<HashMap<&String, &String>> {
-        let mut vec = Vec::<HashMap<&String, &String>>::new();
+    pub fn get_map(&self) -> Vec<HashMap<&'a str, &'a str>> {
+        let mut vec = Vec::<HashMap<&'a str, &'a str>>::new();
         let size = self.column.len();
         for x_index in 0..self.data.len() {
-            let mut map = HashMap::<&String, &String>::new();
+            let mut map = HashMap::<&'a str, &'a str>::new();
             let line_data = &self.data[x_index];
             for index in 0..size {
                 let column_name = &self.column[index];
                 let value = &line_data[index];
-                map.insert(column_name, value);
+                map.insert(*column_name, *value);
             }
             vec.push(map);
         }
@@ -106,4 +110,13 @@ impl SlaveBatchData{
         return vec;
     }
     
+}
+
+
+/**
+指针存储
+**/
+pub struct PtrByteBatchData{
+    byte_ptr: Option<&'static mut Vec<u8>>,
+    batch_data_ptr: Option<&'static mut BatchData<'static>>,
 }

@@ -6,13 +6,17 @@ use crate::controls::batch_insert::INSERT_TCPSTREAM_CACHE_POOL;
 use crate::controls::compress_table::compress_table;
 use crate::controls::create::create_table;
 use crate::controls::drop_table::drop_table_operation;
+use crate::controls::max_offset::get_max_offset;
 use crate::controls::metadata::{get_metadata, get_table_metadata};
 use crate::controls::query::query_daql;
 use crate::controls::stream_read::{STREAM_TCP_TABLESTRUCTURE, stream_read_data};
 use crate::mechanism::replicas::copy_sync_notif;
+use chrono::{Datelike, Local, Timelike};
 use daql_analysis::daql_analysis_function;
 use entity_lib::entity::DaqlEntity::DaqlType;
+use entity_lib::entity::DataLakeEntity::BatchData;
 use entity_lib::entity::Error::DataLakeError;
+use entity_lib::entity::MasterEntity::Statement::batch_insert;
 use entity_lib::entity::MasterEntity::{BatchInsertTruth, Statement};
 use log::{error, info};
 use public_function::{MASTER_CONFIG, MasterConfig, load_properties, write_error};
@@ -22,18 +26,12 @@ use std::any::Any;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Instant;
-use chrono::{Datelike, Local, Timelike};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
 use tokio::sync::Mutex;
 use tokio::sync::mpsc::Receiver;
 use tokio::task::JoinHandle;
 use uuid::Uuid;
-use entity_lib::entity::DataLakeEntity::BatchData;
-use entity_lib::entity::MasterEntity::Statement::batch_insert;
-use crate::controls::max_offset::get_max_offset;
-
-
 
 /**
 -1 是停止
@@ -72,7 +70,7 @@ async fn main() {
 
     let master_main = data_interface();
     let replicas_sync = copy_sync_notif();
-    
+
     tokio::join!(master_main, replicas_sync);
 }
 
@@ -104,26 +102,14 @@ fn data_interface() -> JoinHandle<()> {
 
                             read.read_exact(message.as_mut_slice()).await.unwrap();
 
-                            let now = Local::now();
-                            println!(
-                                "master接收完成数据的时间： {}-{:02}-{:02} {:02}:{:02}:{:02}.{:03}",
-                                now.year(),
-                                now.month(),
-                                now.day(),
-                                now.hour(),
-                                now.minute(),
-                                now.second(),
-                                now.nanosecond() / 1_000_000
-                            );
-                            
-                            
+                           
                             let message_str = String::from_utf8(message).unwrap();
-                            
-                            let statement = serde_json::from_str::<Statement>(&message_str).unwrap();
+
+                            let statement =
+                                serde_json::from_str::<Statement>(&message_str).unwrap();
 
                             match statement {
                                 Statement::sql(daql) => match daql_analysis_function(&daql).await {
-
                                     Ok(daqltype) => match daqltype {
                                         DaqlType::CREATE_TABLE(tablestructure) => {
                                             match create_table(tablestructure).await {
@@ -181,11 +167,13 @@ fn data_interface() -> JoinHandle<()> {
                                             }
                                         }
                                         DaqlType::SHOW_TABLE(table_name) => {
-                                            let metadata_return = get_table_metadata(&table_name).await;
+                                            let metadata_return =
+                                                get_table_metadata(&table_name).await;
                                             match metadata_return {
                                                 Ok(table_structure) => {
                                                     let metadtat_message =
-                                                        serde_json::to_string(&table_structure).unwrap();
+                                                        serde_json::to_string(&table_structure)
+                                                            .unwrap();
                                                     let byt = metadtat_message.as_bytes();
 
                                                     let write_len = byt.len();
@@ -193,7 +181,8 @@ fn data_interface() -> JoinHandle<()> {
 
                                                     write.write_i32(-3).await.unwrap();
 
-                                                    write.write_i32(write_len as i32)
+                                                    write
+                                                        .write_i32(write_len as i32)
                                                         .await
                                                         .unwrap();
                                                     write.write_all(write_message).await.unwrap();
@@ -228,18 +217,19 @@ fn data_interface() -> JoinHandle<()> {
                                                         .await;
                                                 }
                                             }
-                                        },
+                                        }
                                         DaqlType::MAX_OFFSET(table_name) => {
-                                            match get_max_offset(&table_name).await{
+                                            match get_max_offset(&table_name).await {
                                                 Ok(offset_map) => {
                                                     write.write_i32(-4).await.unwrap();
-                                                    
-                                                    let json = serde_json::to_string(&offset_map).unwrap();
+
+                                                    let json =
+                                                        serde_json::to_string(&offset_map).unwrap();
                                                     let bytes = json.as_bytes();
                                                     let bytes_len = bytes.len() as i32;
                                                     write.write_i32(bytes_len).await.unwrap();
                                                     write.write_all(bytes).await.unwrap();
-                                                    
+
                                                     write.write_i32(-1).await.unwrap();
                                                 }
                                                 Err(e) => {
@@ -254,18 +244,21 @@ fn data_interface() -> JoinHandle<()> {
                                     }
                                 },
                                 Statement::stream_read(stream_read) => {
-                                    let stream_return = stream_read_data(stream_read, uuid_arc.as_ref()).await;
+                                    let stream_return =
+                                        stream_read_data(stream_read, uuid_arc.as_ref()).await;
 
                                     match stream_return {
                                         Ok(mut vec_data) => {
-                                            
                                             if let Some(data) = vec_data {
                                                 for datum in data.iter() {
-                                                    write.write_i32(datum.len() as i32).await.unwrap();
+                                                    write
+                                                        .write_i32(datum.len() as i32)
+                                                        .await
+                                                        .unwrap();
                                                     write.write_all(&datum).await.unwrap();
                                                 }
                                             }
-                                            
+
                                             write.write_i32(-1).await.unwrap();
                                         }
                                         Err(e) => {
@@ -275,25 +268,22 @@ fn data_interface() -> JoinHandle<()> {
                                 }
 
                                 Statement::batch_insert => {
-                                    
                                     let batch_data_len = read.read_i32().await.unwrap();
                                     let mut batch_data = vec![0; batch_data_len as usize];
                                     read.read_exact(batch_data.as_mut_slice()).await.unwrap();
-                                    
-                                    let start_now= Instant::now();
+
                                     let mut decoder = Decoder::new();
                                     let message_bytes = decoder
                                         .decompress_vec(&batch_data)
                                         .unwrap_or_else(|e| panic!("解压失败: {}", e));
                                     
-                                    let batch_data = bincode::deserialize::<BatchData>(&message_bytes).unwrap();
-                                    println!("  bincode::deserialize::<BatchData>(&message_bytes).unwrap():  {:?}", start_now.elapsed());
                                     
                                     let arc_uuid_clone = Arc::clone(&uuid_arc);
-                                    let batch_return =
-                                        controls::batch_insert::batch_insert_data(batch_data, arc_uuid_clone)
-                                            .await;
-
+                                    let batch_return = controls::batch_insert::batch_insert_data(
+                                        message_bytes,
+                                        arc_uuid_clone,
+                                    ).await;
+                                    
                                     match batch_return {
                                         Ok(_) => {
                                             write.write_i32(-1).await.unwrap();
@@ -303,15 +293,11 @@ fn data_interface() -> JoinHandle<()> {
                                         }
                                     }
                                 }
-                                
-                                
-                                
-                                
                             }
                         }
 
                         Err(e) => {
-                            println!("{:?}",  e);
+                            println!("{:?}", e);
                             // 输入插入连接断开，清理缓存中的连接
                             /**
                             操作	                     危险场景	                  规避方案
@@ -320,10 +306,10 @@ fn data_interface() -> JoinHandle<()> {
                             跨 map 访问	 |   线程间循环依赖（如 A→B, B→A）	  |  按固定顺序加锁或使用 try_get()
 
                                                         **/
-
                             {
                                 let mut key_vec = Vec::<String>::new();
-                                let insert_tcpstream_cache_pool = Arc::clone(&INSERT_TCPSTREAM_CACHE_POOL);
+                                let insert_tcpstream_cache_pool =
+                                    Arc::clone(&INSERT_TCPSTREAM_CACHE_POOL);
 
                                 insert_tcpstream_cache_pool.iter().for_each(|x| {
                                     let key = x.key();
@@ -336,23 +322,21 @@ fn data_interface() -> JoinHandle<()> {
                                     insert_tcpstream_cache_pool.remove(key);
                                 });
                             }
-                        
-                            
-                            
+
                             // ----------  流消费连接断开，清理缓存中的连接
                             let mut remove_vec = Vec::<String>::new();
                             let mut mutex_guard = STREAM_TCP_TABLESTRUCTURE.lock().await;
-                            
+
                             mutex_guard.keys().for_each(|k| {
                                 if k.contains(uuid_arc.as_ref()) {
                                     remove_vec.push(k.clone());
                                 }
                             });
-                            
+
                             remove_vec.iter().for_each(|k| {
                                 mutex_guard.remove(k).unwrap();
                             });
-                            
+
                             break;
                         }
                     }

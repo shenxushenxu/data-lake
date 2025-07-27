@@ -231,6 +231,7 @@ dependencies = [
 name = "data-lake-client"
 version = "0.1.0"
 dependencies = [
+ "bincode",
  "entity_lib",
  "serde",
  "serde_json",

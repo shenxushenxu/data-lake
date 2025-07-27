@@ -282,13 +282,15 @@ pub async fn read_error(stream: &mut TcpStream) -> Result<(), DataLakeError> {
 
 // 填充默认值
 pub async fn data_complete<'a>(
-    col_type: &HashMap<String, (DataType, ColumnConfigJudgment, Option<String>)>, data: &mut HashMap<String, String> ){
+    col_type: &'a HashMap<String, (DataType, ColumnConfigJudgment, Option<String>)>,
+    data: &mut HashMap<&'a str, &'a str> 
+){
 
-    let mut insert_map = HashMap::<String, String>::new();
+    let mut insert_map = HashMap::<&str, &str>::new();
     for (key, value) in col_type.iter() {
-        match data.get(key) {
+        match data.get(key.as_str()) {
             None => {
-                insert_map.insert(key.clone(), String::from(""));
+                insert_map.insert(key.as_str(), "");
             }
             Some(data_value) => {
                 if data_value.is_empty() {
@@ -296,7 +298,7 @@ pub async fn data_complete<'a>(
                     if let ColumnConfigJudgment::DEFAULT = column_configh_judgment {
                         let default_option = &value.2;
                         if let Some(default_value) = default_option {
-                            insert_map.insert(key.clone(), default_value.clone());
+                            insert_map.insert(key.as_str(), default_value.as_str());
                         }
                     }
                 }

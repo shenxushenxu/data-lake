@@ -8,7 +8,7 @@ use crate::controls::drop_table::drop_table_operation;
 use crate::controls::query_table::query;
 use crate::controls::stream_read::stream_read;
 use entity_lib::entity::Error::DataLakeError;
-use entity_lib::entity::MasterEntity::QueryItem;
+use entity_lib::entity::MasterEntity::{QueryItem, SlaveInsert};
 use entity_lib::entity::SlaveEntity::SlaveMessage::drop_table;
 use entity_lib::entity::SlaveEntity::{QueryMessage, ReplicaseSyncData, SlaveMessage};
 use log::{error, info};
@@ -107,10 +107,8 @@ fn data_read_write() -> JoinHandle<()> {
 
                             
                             
-                            let start_now= Instant::now();
                             let slave_message =
                                 bincode::deserialize::<SlaveMessage>(&message).unwrap();
-                            println!(" slave_message::::::::    {:?}", start_now.elapsed());
                             match slave_message {
                                 SlaveMessage::create(create_message) => {
                                     let create_return = create_table_controls(create_message).await;
@@ -186,22 +184,15 @@ fn data_read_write() -> JoinHandle<()> {
                                         }
                                     }
                                 }
-                                SlaveMessage::batch_insert(batch) => {
-                                    let now = Local::now();
-                                    println!(
-                                        "slave {} 接收完成数据的时间： {}-{:02}-{:02} {:02}:{:02}:{:02}.{:03}",
-                                        batch.partition_code,
-                                        now.year(),
-                                        now.month(),
-                                        now.day(),
-                                        now.hour(),
-                                        now.minute(),
-                                        now.second(),
-                                        now.nanosecond() / 1_000_000
-                                    );
+                                SlaveMessage::batch_insert => {
+                                    
+                                    let batch_data_len = read.read_i32().await.unwrap();
+                                    let mut batch_data_bytes = vec![0u8; batch_data_len as usize];
+                                    read.read_exact(batch_data_bytes.as_mut_slice()).await.unwrap();
+                                    let slave_insert = bincode::deserialize::<SlaveInsert>(batch_data_bytes.as_slice()).unwrap();
                                     
                                     let batch_return =
-                                        controls::batch_insert::batch_insert_data(batch).await;
+                                        controls::batch_insert::batch_insert_data(slave_insert).await;
 
                                     match batch_return {
                                         Ok(_) => {

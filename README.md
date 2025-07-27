@@ -92,8 +92,8 @@ cargo run --release -- masterip:masterprot
 也就是java 的String的hashCode 方法，并对hashcode 取绝对值
 
 
-## 查询表内的数据：
-<br>{"sql":"select username, age from table_name"}
+[//]: # (## 查询表内的数据：)
+[//]: # (<br>{"sql":"select username, age from table_name"})
 ## 添加列
 <br>{"sql":"ALTER TABLE table_name ADD username_a string"}
 ## 删除列

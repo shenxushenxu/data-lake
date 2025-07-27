@@ -26,7 +26,7 @@ pub static FILE_CACHE_POOL: LazyLock<Arc<DashMap<String, Mutex<SlaveCacheStruct>
         Arc::new(DashMap::<String, Mutex<SlaveCacheStruct>>::new())
     });
 
-pub async fn batch_insert_data(batch_insert: SlaveInsert) -> Result<(), DataLakeError> {
+pub async fn batch_insert_data<'a>(batch_insert: SlaveInsert<'a>) -> Result<(), DataLakeError> {
     
     match insert_operation(&batch_insert).await{
         Ok(is) => {
@@ -42,16 +42,15 @@ pub async fn batch_insert_data(batch_insert: SlaveInsert) -> Result<(), DataLake
     }
 }
 
-pub async fn insert_operation(batch_insert: &SlaveInsert) -> Result<Option<String>, DataLakeError> {
+pub async fn insert_operation<'a>(batch_insert: &SlaveInsert<'a>) -> Result<Option<String>, DataLakeError> {
     let table_name = &batch_insert.table_name;
     let partition_code = &batch_insert.partition_code;
 
     let mut batch_insert_data = batch_insert.data.get_map();
     
     let table_structure = &batch_insert.table_structure;
-    let major_key = &table_structure.major_key;
+    let major_key = table_structure.major_key.as_str();
 
-    let start_now = Instant::now();
     batch_insert_data.par_iter().try_for_each(|insert_single| {
         match batch_format_matching(insert_single, table_structure) {
             Ok(_) => return Ok(()),
@@ -60,10 +59,8 @@ pub async fn insert_operation(batch_insert: &SlaveInsert) -> Result<Option<Strin
             }
         }
     })?;
-    println!(" par_iter().try_for_each:  {:?}", start_now.elapsed());
 
     let file_key = format!("{}-{}", table_name, partition_code);
-    let start_now = Instant::now();
 
     let file_cache_pool = Arc::clone(&FILE_CACHE_POOL);
     let mutex_slave_cache_struct = match file_cache_pool.contains_key(&file_key){
@@ -132,18 +129,19 @@ pub async fn insert_operation(batch_insert: &SlaveInsert) -> Result<Option<Strin
     let mut offset_init = get_offset(None, &file_key).await?;
 
     let mut start_seek = slave_cache_struct.data_file.seek(SeekFrom::End(0)).await?;
-    println!(" slave_cache_struct:  {:?}", start_now.elapsed());
 
-    let start_now = Instant::now();
 
     let mut data_vec = Vec::<u8>::new();
     let mut index_vec = Vec::<u8>::new();
-    let crud_type_key = &CRUD_TYPE.to_string();
-    for mut insert_single in batch_insert_data.into_iter() {
-        
+    
+    let batch_insert_data_size = batch_insert_data.len() - 1;
 
+    for index in (batch_insert_data_size ..=0) {
+        
+        let mut insert_single = unsafe{batch_insert_data.get_unchecked_mut(index)};
+        
         let major_value = insert_single.remove(major_key).unwrap();
-        let crud_type = insert_single.remove(crud_type_key).unwrap();
+        let crud_type = insert_single.remove(CRUD_TYPE).unwrap();
 
         let data = DataStructureSerialize {
             table_name: table_name,
@@ -154,9 +152,10 @@ pub async fn insert_operation(batch_insert: &SlaveInsert) -> Result<Option<Strin
             offset: &offset_init,
         };
 
-        let json_value = serde_json::to_string(&data)?;
+        // let json_value = serde_json::to_string(&data)?;
+        let value = bincode::serialize(&data)?;
         let mut encoder = Encoder::new();
-        let mut compressed_data = encoder.compress_vec(json_value.as_bytes())?;
+        let mut compressed_data = encoder.compress_vec(value.as_slice())?;
 
         let data_len = compressed_data.len() as i32;
 
@@ -179,10 +178,7 @@ pub async fn insert_operation(batch_insert: &SlaveInsert) -> Result<Option<Strin
         start_seek = end_seek;
     }
 
-    println!(
-        "for insert_single in batch_insert_data.into_iter():   {:?}",
-        start_now.elapsed()
-    );
+   
 
     slave_cache_struct
         .data_file
@@ -255,7 +251,7 @@ async fn get_offset(
 数据验证，查看数据是否符合 元数据的格式
 **/
 pub fn batch_format_matching(
-    insert_single: &HashMap<&String, &String>,
+    insert_single: &HashMap<&str, &str>,
     table_structure: &TableStructure,
 ) -> Result<(), DataLakeError> {
     let structure_col_type = &table_structure.col_type;
@@ -268,16 +264,16 @@ pub fn batch_format_matching(
 
 pub fn type_verification(
     metadata_col_type: &HashMap<String, (DataType, ColumnConfigJudgment, Option<String>)>,
-    insert_data: &HashMap<&String, &String>,
+    insert_data: &HashMap<&str, &str>,
     table_name: &String,
 ) -> Result<(), DataLakeError> {
     for (col_name, value) in insert_data.iter() {
         match metadata_col_type.get(*col_name) {
             Some((data_type, column_conf_judg, _)) => {
                 // 验证类型是否匹配
-                verification_type(col_name, value, data_type)?;
+                verification_type(*col_name, *value, data_type)?;
                 //验证属性配置是否匹配
-                conf_verification(col_name, value, column_conf_judg)?;
+                conf_verification(*col_name, *value, column_conf_judg)?;
             }
             None => {
                 if *col_name != CRUD_TYPE {
@@ -294,8 +290,8 @@ pub fn type_verification(
 }
 
 fn conf_verification(
-    col_name: &String,
-    col_value: &String,
+    col_name: &str,
+    col_value: &str,
     column_conf_judg: &ColumnConfigJudgment,
 ) -> Result<(), DataLakeError> {
     match column_conf_judg {
@@ -318,8 +314,8 @@ fn conf_verification(
 检查插入数据的 类型是否和 表元数据匹配
 **/
 fn verification_type(
-    col_name: &String,
-    col_value: &String,
+    col_name: &str,
+    col_value: &str,
     data_type: &DataType,
 ) -> Result<(), DataLakeError> {
     match data_type {

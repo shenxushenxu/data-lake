@@ -58,15 +58,14 @@ pub async fn data_duplicate_removal(file_vec: Vec<String>, uuid:&String) -> Resu
                     let message_bytes = decoder
                         .decompress_vec(&message)?;
 
-                    let message_str = std::str::from_utf8(&message_bytes)?;
-                    let data_structure = serde_json::from_str::<DataStructure>(message_str)?;
+                    let data_structure = bincode::deserialize::<DataStructure>(&message_bytes)?;
 
-                    let major_value = &data_structure.major_value;
-                    let crud_type = &data_structure._crud_type;
-                    let offset = &data_structure.offset;
+                    let major_value = data_structure.major_value;
+                    let crud_type = data_structure._crud_type;
+                    let offset = data_structure.offset;
 
                     match res_map.get(major_value) {
-                        Some((position, len)) => match crud_type.as_str() {
+                        Some((position, len)) => match crud_type {
                             const_property::CURD_INSERT => {
 
                                 let temp_mmap = unsafe {Mmap::map(&temp_file)}?;
@@ -75,7 +74,7 @@ pub async fn data_duplicate_removal(file_vec: Vec<String>, uuid:&String) -> Resu
                                 let data = bincode::deserialize::<DataStructure>(this_data)?;
 
 
-                                let map_data_offset = &data.offset;
+                                let map_data_offset = data.offset;
                                 if offset > map_data_offset {
                                     let data_position = temp_file.seek(SeekFrom::End(0)).await?;
                                     let data_bytes = bincode::serialize(&data_structure)?;
@@ -83,7 +82,7 @@ pub async fn data_duplicate_removal(file_vec: Vec<String>, uuid:&String) -> Resu
 
                                     temp_file.write_all(data_bytes.as_slice()).await?;
 
-                                    res_map.insert(major_value.clone(), (data_position as usize, data_len));
+                                    res_map.insert(major_value.to_string(), (data_position as usize, data_len));
                                 } else {
                                     return Err(DataLakeError::custom(
                                         format!("{} : 奶奶的，offset出毛病了  本身的offset {}   map里面存储的offset{}", file_path, offset, map_data_offset)
@@ -100,7 +99,7 @@ pub async fn data_duplicate_removal(file_vec: Vec<String>, uuid:&String) -> Resu
                                 )));
                             }
                         },
-                        None => match crud_type.as_str() {
+                        None => match crud_type {
                             const_property::CURD_INSERT => {
 
                                 let data_position = temp_file.seek(SeekFrom::End(0)).await?;
@@ -108,7 +107,7 @@ pub async fn data_duplicate_removal(file_vec: Vec<String>, uuid:&String) -> Resu
                                 let data_len = data_bytes.len();
                                 temp_file.write_all(data_bytes.as_slice()).await?;
 
-                                res_map.insert(major_value.clone(), (data_position as usize, data_len));
+                                res_map.insert(major_value.to_string(), (data_position as usize, data_len));
                             }
                             const_property::CURD_DELETE => {
                                 res_map.remove(major_value);
@@ -171,18 +170,15 @@ impl<'a> ArrayBytesReader<'a> {
         };
     }
 
-    pub fn read_i32(&mut self) -> i32 {
+    pub fn read_i32(&mut self) -> Result<i32, DataLakeError> {
         let size = size_of::<i32>();
 
-        let len = i32::from_be_bytes(
-            self.data[self.array_pointer..self.array_pointer + size]
-                .try_into()
-                .unwrap(),
-        );
+        let bytes = self.data[self.array_pointer..self.array_pointer + size].try_into()?;
+        let len = i32::from_be_bytes(bytes);
 
         self.array_pointer += size;
 
-        return len;
+        return Ok(len);
     }
 
     pub fn read_exact(&mut self, len: usize) -> &'a [u8] {

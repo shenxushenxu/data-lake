@@ -1,4 +1,5 @@
 use core::fmt::{Debug, Display};
+use std::array::TryFromSliceError;
 use std::num::{ParseFloatError, ParseIntError};
 use std::panic::Location;
 use std::str::{ParseBoolError, Utf8Error};
@@ -46,7 +47,12 @@ pub enum DataLakeError {
         source: snap::Error,
         location: &'static Location<'static>,
     },
+    TryFromSliceError{
+        source: std::array::TryFromSliceError,
+        location: &'static Location<'static>,
+    }
 }
+
 
 impl Display for DataLakeError {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
@@ -113,6 +119,13 @@ impl Display for DataLakeError {
             DataLakeError::SnapError { source, location } => write!(
                 f,
                 "{}:{}: snappy 压缩算法出错: {}",
+                location.file(),
+                location.line(),
+                source
+            ),
+            &DataLakeError::TryFromSliceError {  source, location } =>  write!(
+                f,
+                "{}:{}: 类型转换出错: {}",
                 location.file(),
                 location.line(),
                 source
@@ -217,3 +230,13 @@ impl From<Utf8Error> for DataLakeError {
         }
     }
 }
+
+impl From<std::array::TryFromSliceError> for DataLakeError {
+    #[track_caller]
+    fn from(value: TryFromSliceError) -> Self {
+        DataLakeError::TryFromSliceError{
+            source: value,
+            location: Location::caller()
+        }
+    }
+} 

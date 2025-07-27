@@ -5,6 +5,7 @@ use snap::raw::Decoder;
 use std::collections::HashMap;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpSocket, TcpStream};
+use entity_lib::entity::MasterEntity::Statement::batch_insert;
 
 #[derive(Serialize, Deserialize, Debug)]
 struct StreamRead {
@@ -105,13 +106,13 @@ impl<'a> Consumer<'a> {
                     .unwrap_or_else(|e| panic!("解压失败: {}", e));
 
                 let data_structure_vec =
-                    serde_json::from_slice::<Vec<DataStructure>>(&message_bytes).unwrap();
+                    bincode::deserialize::<Vec<DataStructure>>(&message_bytes).unwrap();
 
                 for data_structure in data_structure_vec.iter() {
                     let offset = data_structure.offset;
                     let partition_code = &data_structure.partition_code;
 
-                    self.hash_map.insert(partition_code.clone(), offset);
+                    self.hash_map.insert(partition_code.to_string(), offset);
 
                     let messss = serde_json::to_string(data_structure).unwrap();
                     res_vec.push(messss);

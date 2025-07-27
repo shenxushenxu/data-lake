@@ -87,16 +87,10 @@ pub struct Insert {
 }
 
 
-// #[derive(Serialize, Deserialize, Debug, Clone)]
-// pub struct SlaveBatchData{
-//     pub major_key: String,
-//     pub data: String,
-//     pub _crud_type: String,
-// }
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct SlaveInsert {
-    pub table_name: String,
-    pub data: SlaveBatchData,
+#[derive(Serialize,Deserialize, Debug, Clone)]
+pub struct SlaveInsert<'a > {
+    pub table_name: &'a str,
+    pub data: SlaveBatchData<'a>,
     pub partition_code: String,
     pub table_structure: TableStructure
 }
@@ -108,16 +102,6 @@ pub struct BatchInsertTruth {
     pub partition_code: Option<String>,
 }
 
-/**
-批量插入 的 struct
-**/
-// #[derive(Serialize, Deserialize, Debug)]
-// pub struct BatchInsert{
-//     pub table_name: String,
-//     pub data: Vec<u8>,
-//     // 批量插入数据指定的分区号可以为None
-//     pub partition_code: Option<String>,
-// }
 
 /**
 语句的 枚举类

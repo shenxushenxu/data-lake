@@ -1,3 +1,4 @@
+use std::panic::Location;
 use entity_lib::entity::Error::DataLakeError;
 use entity_lib::entity::SlaveEntity::{DataStructure, IndexStruct, StreamReadStruct};
 use memmap2::Mmap;
@@ -20,35 +21,92 @@ pub async fn stream_read(streamreadstruct: &StreamReadStruct) -> Result<Option<V
                 let mut vec_datastructure = Vec::<DataStructure>::new();
                 
                 let mut arraybytesreader = ArrayBytesReader::new(stream_me.as_slice());
+                
+                let mut box_bytes_vec = Vec::<&mut Vec<u8>>::new();
+                
                 loop {
                     if arraybytesreader.is_stop() {
                         break;
                     }
                 
-                    let mess_len = arraybytesreader.read_i32();
+                    let mess_len = match arraybytesreader.read_i32(){
+                        Ok(len) => { len }
+                        Err(e) => {
+                            for box_leak in box_bytes_vec {
+                                unsafe {Box::from_raw(box_leak)};
+                            }
+                            return Err(e);
+                        }
+                    };
                     let mess = arraybytesreader.read_exact(mess_len as usize);
                 
                     let mut decoder = Decoder::new();
-                    let message_bytes = decoder
-                        .decompress_vec(mess)
-                        .unwrap_or_else(|e| panic!("解压失败: {}", e));
-                    let message = String::from_utf8(message_bytes)?;
-                    let mut datastructure =
-                        serde_json::from_str::<DataStructure>(&message)?;
-                    let data = &mut datastructure.data;
-                
+                    let message_bytes = match decoder.decompress_vec(mess){
+                        Ok(bytes) => {
+                            bytes
+                        }
+                        Err(e) => {
+                            for box_leak in box_bytes_vec {
+                                unsafe {Box::from_raw(box_leak)};
+                            }
+                            return Err(DataLakeError::custom(format!("解压报错: {:?}", e)));
+                        }
+                    };
                     
-                
+                    let box_bytes = Box::leak(Box::new(message_bytes));
+                    
+                    let mut datastructure = {
+                        let prt_bytes = box_bytes as * mut Vec<u8>;
+                        
+                        let bytes = unsafe{&*prt_bytes};
+                        
+                        match bincode::deserialize::<DataStructure>(bytes){
+                            Ok(datastruct) => datastruct,
+                            Err(e) => {
+                                for box_leak in box_bytes_vec {
+                                    unsafe {Box::from_raw(box_leak)};
+                                }
+                                return Err(DataLakeError::BincodeError {
+                                    source: e,
+                                    location: Location::caller()
+                                });
+                            }
+                        }
+                    };
+
+                    box_bytes_vec.push(box_bytes);
+                    
+                    
+                    
+                    let data = &mut datastructure.data;
+                    
                     // 补全\验证  数据
                     data_complete(col_type, data).await;
-                
+                    
+                    
                     vec_datastructure.push(datastructure);
                 }
                 
-                let vec_string = serde_json::to_string(&vec_datastructure)?;
+                let vec_mess = match bincode::serialize(&vec_datastructure){
+                    Ok(vec_string) => {
+                        for box_leak in box_bytes_vec {
+                            unsafe {Box::from_raw(box_leak)};
+                        }
+                        
+                        vec_string
+                    },
+                    Err(e) =>{
+                        return Err(DataLakeError::BincodeError {
+                            source: e,
+                            location: Location::caller()
+                        });
+                    }
+                };
                 
                 let mut encoder = Encoder::new();
-                let compressed_data = encoder.compress_vec(vec_string.as_bytes())?;
+                let compressed_data = encoder.compress_vec(&vec_mess)?;
+                
+                
                 
                 return Ok(Some(compressed_data));
             }
@@ -57,9 +115,6 @@ pub async fn stream_read(streamreadstruct: &StreamReadStruct) -> Result<Option<V
             return Err(e);
         }
     };
-    
-    
-    
 }
 
 
