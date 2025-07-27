@@ -134,9 +134,11 @@ pub async fn insert_operation<'a>(batch_insert: &SlaveInsert<'a>) -> Result<Opti
     let mut data_vec = Vec::<u8>::new();
     let mut index_vec = Vec::<u8>::new();
     
-    let batch_insert_data_size = batch_insert_data.len() - 1;
+    println!("batch_insert_data:   {:?}", batch_insert_data);
+    
+    let batch_insert_data_size = batch_insert_data.len();
 
-    for index in (batch_insert_data_size ..=0) {
+    for index in (0..batch_insert_data_size).rev() {
         
         let mut insert_single = unsafe{batch_insert_data.get_unchecked_mut(index)};
         

@@ -69,9 +69,9 @@ async fn main() {
     env_logger::init();
 
     let master_main = data_interface();
-    let replicas_sync = copy_sync_notif();
+    // let replicas_sync = copy_sync_notif();
 
-    tokio::join!(master_main, replicas_sync);
+    tokio::join!(master_main);
 }
 
 /**
@@ -324,18 +324,20 @@ fn data_interface() -> JoinHandle<()> {
                             }
 
                             // ----------  流消费连接断开，清理缓存中的连接
-                            let mut remove_vec = Vec::<String>::new();
-                            let mut mutex_guard = STREAM_TCP_TABLESTRUCTURE.lock().await;
-
-                            mutex_guard.keys().for_each(|k| {
-                                if k.contains(uuid_arc.as_ref()) {
-                                    remove_vec.push(k.clone());
-                                }
-                            });
-
-                            remove_vec.iter().for_each(|k| {
-                                mutex_guard.remove(k).unwrap();
-                            });
+                            {
+                                let stream_tcp_tablestructure = Arc::clone(&STREAM_TCP_TABLESTRUCTURE);
+                                let mut remove_vec = Vec::<String>::new();
+                                stream_tcp_tablestructure.iter().for_each(|x| {
+                                    let key = x.key();
+                                    if key.contains(uuid_arc.as_ref()) {
+                                        remove_vec.push(key.clone());
+                                    }
+                                });
+                                remove_vec.iter().for_each(|k| {
+                                    stream_tcp_tablestructure.remove(k).unwrap();
+                                });
+                            }
+                            
 
                             break;
                         }

@@ -4,6 +4,7 @@ use entity_lib::entity::MasterEntity::{Info, MasterStreamRead, Parti, PartitionI
 use entity_lib::entity::SlaveEntity::{SlaveMessage, StreamReadStruct};
 use std::collections::HashMap;
 use std::sync::{Arc, LazyLock};
+use dashmap::DashMap;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tokio::sync::Mutex;
@@ -11,8 +12,10 @@ use tokio::sync::mpsc::Receiver;
 use tokio::task::JoinError;
 
 pub static STREAM_TCP_TABLESTRUCTURE: LazyLock<
-    Mutex<HashMap<String, (TcpStream, TableStructure)>>,
-> = LazyLock::new(|| Mutex::new(HashMap::<String, (TcpStream, TableStructure)>::new()));
+    Arc<DashMap<String, Mutex<(TcpStream, TableStructure)>>>,
+> = LazyLock::new(||{
+    Arc::new(DashMap::<String, Mutex<(TcpStream, TableStructure)>>::new())
+});
 
 pub async fn stream_read_data(
     masterstreamread: MasterStreamRead,
@@ -24,20 +27,26 @@ pub async fn stream_read_data(
     let table_structure = get_metadata(&table_name).await?;
 
     let address_map = &table_structure.partition_address;
-
-    // let (sender, mut receiver) = tokio::sync::mpsc::channel::<Option<Vec<u8>>>(10000);
-
+    
     let mut patiti_vec = masterstreamread.patition_mess;
 
-    if patiti_vec.len() == 0 {
         for key in address_map.keys() {
-            let par = Parti {
-                patition_code: key.clone(),
-                offset: 0,
-            };
-            patiti_vec.push(par);
+            let mut is = true;
+            
+            for p_v in patiti_vec.iter() {
+                if p_v.patition_code == *key{
+                     is = false;        
+                }
+            }
+            if is {
+                let par = Parti {
+                    patition_code: key.clone(),
+                    offset: 0,
+                };
+                patiti_vec.push(par);
+            }
         }
-    }
+    
 
     let ta_na = Arc::new(table_name);
     
@@ -64,25 +73,38 @@ pub async fn stream_read_data(
 
         let arc_ta_name = Arc::clone(&ta_na);
 
-        let map_key = format!("{}_{}", uuid, arc_ta_name.as_ref());
+        let map_key = format!("{}_{}_{}", uuid, arc_ta_name.as_ref(), partition_code);
 
+        let stream_tcp_tablestructure = Arc::clone(&STREAM_TCP_TABLESTRUCTURE);
         join_handle_set.spawn(async move {
             
-            let mut stream_map = STREAM_TCP_TABLESTRUCTURE.lock().await;
-            let (stream, tablestructure) = match stream_map.get_mut(&map_key) {
-                Some(stream) => stream,
-                None => {
+            
+            let ref_mutex = match stream_tcp_tablestructure.contains_key(&map_key) {
+                true => {
+                    stream_tcp_tablestructure.get(&map_key).unwrap()
+                },
+                false => {
                     let address = &partition_info.address;
                     let mut stream = TcpStream::connect(address).await?;
 
                     
                     let tablestructure = get_metadata(arc_ta_name.as_ref()).await?;
-                    stream_map.insert(map_key.clone(), (stream, tablestructure));
+                    stream_tcp_tablestructure.insert(map_key.clone(), Mutex::new((stream, tablestructure)));
 
-                    stream_map.get_mut(&map_key).unwrap()
+                    stream_tcp_tablestructure.get(&map_key).unwrap()
                 }
             };
-            let col_type = tablestructure.col_type.clone();
+
+            let mutex = ref_mutex.value();
+            let mut mutex_guard = mutex.lock().await;
+            
+            let col_type = {
+                let tablestructure = &mutex_guard.1;
+                tablestructure.col_type.clone()
+            };
+            
+            let stream = &mut mutex_guard.0;
+
 
             let stream_read = StreamReadStruct {
                 table_name: table_name_clone,
@@ -102,9 +124,6 @@ pub async fn stream_read_data(
             match stream.read_i32().await {
                 Ok(read_count) => {
                     if read_count == -1 {
-                        // if let Err(e) = sen.send(None).await {
-                        //     println!("Error sending message: {:?}", e);
-                        // }
                         return Ok(None);
                     } else if read_count == -2 {
                         let len = stream.read_i32().await?;

@@ -112,9 +112,6 @@ pub async fn batch_insert_data<'a>(
                 let insert_tcpstream_cache_pool = Arc::clone(&INSERT_TCPSTREAM_CACHE_POOL);
                 join_handle_set.spawn(async move {
                     let mut partition_address = table_structure_clone.partition_address.clone();
-
-                 
-
                     let tcp_key = format!("{}-{}", uuid_clone.as_ref(), partition_code);
 
                     let tcp_stream = match insert_tcpstream_cache_pool.contains_key(&tcp_key) {

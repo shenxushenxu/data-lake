@@ -99,7 +99,6 @@ pub struct SlaveInsert<'a > {
 pub struct BatchInsertTruth {
     pub table_name: String,
     pub data: Vec<HashMap<String, String>>,
-    pub partition_code: Option<String>,
 }
 
 

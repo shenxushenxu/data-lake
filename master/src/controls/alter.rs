@@ -1,3 +1,4 @@
+use std::sync::Arc;
 use crate::controls::metadata::{get_metadata, get_table_path};
 use entity_lib::entity::Error::DataLakeError;
 use public_function::MASTER_CONFIG;
@@ -29,20 +30,19 @@ pub async fn alter_orop(alteradd: (String, String)) -> Result<(), DataLakeError>
         let data = bincode::serialize(&tablestruct)?;
 
         {
-            let mut vec_stream = Vec::<(String, TableStructure)>::new();
+            let table_name = &tablestruct.table_name;
 
-            let mut tcp_tablestructure = STREAM_TCP_TABLESTRUCTURE.lock().await;
-            for key in tcp_tablestructure.keys() {
-                if key.contains(table_name.as_str()) {
-                    vec_stream.push((key.clone(), tablestruct.clone()));
+            let stream_tcp_tablestructure = Arc::clone(&STREAM_TCP_TABLESTRUCTURE);
+            let mut remove_vec = Vec::<String>::new();
+            stream_tcp_tablestructure.iter().for_each(|x| {
+                let key = x.key();
+                if key.contains(table_name) {
+                    remove_vec.push(key.clone());
                 }
-            }
-
-            for (key, tabl) in vec_stream {
-                let (stream, _) = tcp_tablestructure.remove(&key).unwrap();
-
-                tcp_tablestructure.insert(key, (stream, tabl));
-            }
+            });
+            remove_vec.iter().for_each(|k| {
+                stream_tcp_tablestructure.remove(k).unwrap();
+            });
         }
 
         
@@ -125,22 +125,22 @@ pub async fn alter_add(
 
         col_type.insert(col_name.to_string(), (data_type, column_config.0, column_config.1));
         tablestruct.col_type = col_type;
+        
 
         {
-            let mut vec_stream = Vec::<(String, TableStructure)>::new();
-            let mut tcp_tablestructure = STREAM_TCP_TABLESTRUCTURE.lock().await;
+            let table_name = &tablestruct.table_name;
 
-            for key in tcp_tablestructure.keys() {
-                if key.contains(table_name.as_str()) {
-                    vec_stream.push((key.clone(), tablestruct.clone()));
+            let stream_tcp_tablestructure = Arc::clone(&STREAM_TCP_TABLESTRUCTURE);
+            let mut remove_vec = Vec::<String>::new();
+            stream_tcp_tablestructure.iter().for_each(|x| {
+                let key = x.key();
+                if key.contains(table_name) {
+                    remove_vec.push(key.clone());
                 }
-            }
-
-            for (key, tabl) in vec_stream {
-                let (stream, _) = tcp_tablestructure.remove(&key).unwrap();
-                tcp_tablestructure.insert(key, (stream, tabl));
-            }
-
+            });
+            remove_vec.iter().for_each(|k| {
+                stream_tcp_tablestructure.remove(k).unwrap();
+            });
         }
 
 

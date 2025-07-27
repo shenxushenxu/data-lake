@@ -79,9 +79,10 @@ pub async fn stream_read(streamreadstruct: &StreamReadStruct) -> Result<Option<V
                     
                     
                     let data = &mut datastructure.data;
+                    let major_value = datastructure.major_value;
                     
                     // 补全\验证  数据
-                    data_complete(col_type, data).await;
+                    data_complete(col_type, data, major_value).await;
                     
                     
                     vec_datastructure.push(datastructure);

@@ -6,6 +6,7 @@ use std::collections::HashMap;
 use snap::raw::{Decoder, Encoder};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
+use entity_lib::entity::DataLakeEntity::BatchData;
 use entity_lib::entity::MasterEntity::{Statement, TableStructure};
 use crate::controls::stream_read_logic::Consumer;
 use crate::entity::ClientStatement;
@@ -119,19 +120,52 @@ async fn main() {
 
                 let table_name = batch_insert.table_name;
                 let hash_data = batch_insert.data;
-                let partition_code = batch_insert.partition_code;
 
-                let data_str = serde_json::to_string(&hash_data).unwrap();
+                /**
+                pub table_name: &'a str,
+                pub column: Vec<&'a str>,
+                pub data: Vec<Vec<&'a str>>,
+                **/
+                let mut column_map = HashMap::<String, usize>::new();
+                for hash_datum in hash_data.iter() {
+                    hash_datum.keys().for_each(|k| {
+                        column_map.insert(k.clone(), 1);
+                    })
+                }
+                let mut column_vec = Vec::<&str>::new();
+                column_map.keys().for_each(|x| {
+                    column_vec.push(x.as_str());
+                });
+
+                let mut vec_data = Vec::<Vec<&str>>::new();
+                hash_data.iter().for_each(|x1| {
+                    let mut data = Vec::<&str>::new();
+                    column_vec.iter().for_each(|x2| {
+                        match x1.get(*x2){
+                            None => {
+                                data.push("");
+                            }
+                            Some(value) => {
+                                data.push(value.as_str());
+                            }
+                        }
+                    });
+                    
+                    vec_data.push(data);
+                });
+                let batch_data = BatchData{
+                  table_name: table_name.as_str(),
+                    column: column_vec,
+                    data: vec_data
+                };
+                
+                
+                
+                let data_str = bincode::serialize(&batch_data).unwrap();
 
                 let mut encoder = Encoder::new();
-                let compressed_data = encoder.compress_vec(data_str.as_bytes()).unwrap();
-
-                // let batchinsert = BatchInsert{
-                //     table_name: table_name,
-                //     data: compressed_data,
-                //     partition_code: partition_code
-                // };
-
+                let compressed_data = encoder.compress_vec(&data_str).unwrap();
+                
                 let state = Statement::batch_insert;
 
                 let write_data = serde_json::to_string(&state).unwrap();
@@ -141,6 +175,14 @@ async fn main() {
                 stream.write_i32(data_len as i32).await.unwrap();
                 stream.write_all(data_bytes).await.unwrap();
 
+
+                
+                let compressed_data_len = compressed_data.len();
+
+                stream.write_i32(compressed_data_len as i32).await.unwrap();
+                stream.write_all(&compressed_data).await.unwrap();
+                
+                
                 entity::pub_function::read_error(&mut stream).await;
 
             }

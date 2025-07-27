@@ -48,14 +48,13 @@ impl MasterConfig {
         
         let mut data_path_index = self.data_path_index;
         
-        let data_path = master_data_path[data_path_index].clone();
-
-        if data_path_index == (master_data_path.len() - 1) {
+        if data_path_index >= master_data_path.len() {
             self.data_path_index = 0;
-        } else {
-            self.data_path_index = data_path_index + 1;
         }
         
+        let data_path = master_data_path[data_path_index].clone();
+
+        self.data_path_index = data_path_index + 1;
         
         return data_path;
     }
@@ -160,7 +159,7 @@ pub fn load_properties(file_path: &str) -> HashMap<String, String> {
 /**
 根据 分区名称 获得分区下的 索引文件 和数据文件的文件名和路径
 **/
-pub async fn get_list_filename(partition_code: &str) -> Vec<(String, String)> {
+pub async fn get_list_filename(partition_name: &str) -> Vec<(String, String)> {
 
     let slave_data = {
         let mut slave_config = SLAVE_CONFIG.lock().await;
@@ -172,15 +171,15 @@ pub async fn get_list_filename(partition_code: &str) -> Vec<(String, String)> {
     let partition_path_vec = slave_data
         .iter()
         .filter(|x| {
-            let partiti_path = format!("{}/{}", x, partition_code);
+            let partiti_path = format!("{}/{}", x, partition_name);
+            println!("------         {}",partiti_path);
             let path = Path::new(partiti_path.as_str());
             if path.exists() { true } else { false }
         })
         .map(|x1| {
-            let partiti_path = format!("{}/{}", x1, partition_code);
+            let partiti_path = format!("{}/{}", x1, partition_name);
             partiti_path
-        })
-        .collect::<Vec<String>>();
+        }).collect::<Vec<String>>();
 
     let partition_path = &partition_path_vec[0];
 
@@ -283,14 +282,20 @@ pub async fn read_error(stream: &mut TcpStream) -> Result<(), DataLakeError> {
 // 填充默认值
 pub async fn data_complete<'a>(
     col_type: &'a HashMap<String, (DataType, ColumnConfigJudgment, Option<String>)>,
-    data: &mut HashMap<&'a str, &'a str> 
+    data: &mut HashMap<&'a str, &'a str>,
+    major_value: &'a str
 ){
 
     let mut insert_map = HashMap::<&str, &str>::new();
     for (key, value) in col_type.iter() {
         match data.get(key.as_str()) {
             None => {
-                insert_map.insert(key.as_str(), "");
+                if let ColumnConfigJudgment::PRIMARY_KEY =value.1{
+                    insert_map.insert(key.as_str(), major_value);
+                }else {
+                    insert_map.insert(key.as_str(), "");
+                }
+                
             }
             Some(data_value) => {
                 if data_value.is_empty() {
