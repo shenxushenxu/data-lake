@@ -69,9 +69,9 @@ async fn main() {
     env_logger::init();
 
     let master_main = data_interface();
-    // let replicas_sync = copy_sync_notif();
+    let replicas_sync = copy_sync_notif();
 
-    tokio::join!(master_main);
+    tokio::join!(master_main, replicas_sync);
 }
 
 /**

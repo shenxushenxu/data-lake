@@ -172,7 +172,6 @@ pub async fn get_list_filename(partition_name: &str) -> Vec<(String, String)> {
         .iter()
         .filter(|x| {
             let partiti_path = format!("{}/{}", x, partition_name);
-            println!("------         {}",partiti_path);
             let path = Path::new(partiti_path.as_str());
             if path.exists() { true } else { false }
         })

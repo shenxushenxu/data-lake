@@ -14,9 +14,10 @@ use std::sync::{Arc, LazyLock};
 use std::time::Instant;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::{Mutex, RwLock};
+use uuid::Uuid;
 
-pub static INSERT_TCPSTREAM_CACHE_POOL: LazyLock<Arc<DashMap<String, Mutex<DataLakeTcpStream>>>> =
-    LazyLock::new(|| Arc::new(DashMap::<String, Mutex<DataLakeTcpStream>>::new()));
+pub static INSERT_TCPSTREAM_CACHE_POOL: LazyLock<Arc<DashMap<String, Arc<Mutex<DataLakeTcpStream>>>>> =
+    LazyLock::new(|| Arc::new(DashMap::<String, Arc<Mutex<DataLakeTcpStream>>>::new()));
 
 pub async fn batch_insert_data<'a>(
     message_bytes: Vec<u8>,
@@ -114,8 +115,12 @@ pub async fn batch_insert_data<'a>(
                     let mut partition_address = table_structure_clone.partition_address.clone();
                     let tcp_key = format!("{}-{}", uuid_clone.as_ref(), partition_code);
 
-                    let tcp_stream = match insert_tcpstream_cache_pool.contains_key(&tcp_key) {
-                        true => insert_tcpstream_cache_pool.get(&tcp_key).unwrap(),
+                    let is = {
+                        insert_tcpstream_cache_pool.contains_key(&tcp_key)  
+                    };
+
+                    let tcp_stream = match is {
+                        true => Arc::clone(insert_tcpstream_cache_pool.get(&tcp_key).unwrap().value()),
                         false => {
                             let partition_address = &mut partition_address;
                             let partition_info_vec = partition_address
@@ -123,12 +128,10 @@ pub async fn batch_insert_data<'a>(
                                 .unwrap();
 
                             let stream = DataLakeTcpStream::connect(partition_info_vec).await?;
-                            insert_tcpstream_cache_pool.insert(tcp_key.clone(), Mutex::new(stream));
-                            insert_tcpstream_cache_pool.get(&tcp_key).unwrap()
+                            insert_tcpstream_cache_pool.insert(tcp_key.clone(), Arc::new(Mutex::new(stream)));
+                            Arc::clone(insert_tcpstream_cache_pool.get(&tcp_key).unwrap().value())
                         }
                     };
-
-                    let tcp_stream = tcp_stream.value();
 
                     let mut stream = tcp_stream.lock().await;
 
@@ -139,7 +142,6 @@ pub async fn batch_insert_data<'a>(
                         partition_code: partition_code.to_string(),
                         table_structure: table_structure_clone,
                     };
-
                     let slave_message = SlaveMessage::batch_insert;
 
                     let bytes = bincode::serialize(&slave_message)?;
@@ -152,7 +154,6 @@ pub async fn batch_insert_data<'a>(
                     let batch_slave_len = batch_slave_data.len() as i32;
                     stream.write_i32(batch_slave_len).await?;
                     stream.write_all(&batch_slave_data).await?;
-                    
 
                     
                     let bytes_len = stream.read_i32().await?;

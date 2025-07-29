@@ -21,9 +21,9 @@ use tokio::fs::OpenOptions;
 use tokio::io::{AsyncSeekExt, AsyncWriteExt};
 use tokio::sync::{Mutex};
 
-pub static FILE_CACHE_POOL: LazyLock<Arc<DashMap<String, Mutex<SlaveCacheStruct>>>> =
+pub static FILE_CACHE_POOL: LazyLock<Arc<DashMap<String, Arc<Mutex<SlaveCacheStruct>>>>> =
     LazyLock::new(|| {
-        Arc::new(DashMap::<String, Mutex<SlaveCacheStruct>>::new())
+        Arc::new(DashMap::<String, Arc<Mutex<SlaveCacheStruct>>>::new())
     });
 
 pub async fn batch_insert_data<'a>(batch_insert: SlaveInsert<'a>) -> Result<(), DataLakeError> {
@@ -63,7 +63,12 @@ pub async fn insert_operation<'a>(batch_insert: &SlaveInsert<'a>) -> Result<Opti
     let file_key = format!("{}-{}", table_name, partition_code);
 
     let file_cache_pool = Arc::clone(&FILE_CACHE_POOL);
-    let mutex_slave_cache_struct = match file_cache_pool.contains_key(&file_key){
+    
+    let is = {
+        file_cache_pool.contains_key(&file_key)
+    };
+    
+    let mutex_slave_cache_struct = match is {
         false => {
             let partition_path = get_slave_path(&file_key).await?;
 
@@ -108,13 +113,14 @@ pub async fn insert_operation<'a>(batch_insert: &SlaveInsert<'a>) -> Result<Opti
                 metadata_mmap: metadata_mmap,
             };
 
-            file_cache_pool.insert(file_key.clone(), Mutex::new(slave_cache_struct));
+            file_cache_pool.insert(file_key.clone(), Arc::new(Mutex::new(slave_cache_struct)));
             let ref_value = file_cache_pool.get(&file_key).unwrap();
-            ref_value
+            Arc::clone(ref_value.value())
             
         }
         true => {
-            file_cache_pool.get(&file_key).unwrap()
+            let ref_value = file_cache_pool.get(&file_key).unwrap();
+            Arc::clone(ref_value.value())
         }
     };
     
@@ -123,7 +129,7 @@ pub async fn insert_operation<'a>(batch_insert: &SlaveInsert<'a>) -> Result<Opti
     
     
 
-    let mut slave_cache_struct = mutex_slave_cache_struct.value().lock().await;
+    let mut slave_cache_struct = mutex_slave_cache_struct.lock().await;
 
     // 定义 offset 变量
     let mut offset_init = get_offset(None, &file_key).await?;
@@ -134,7 +140,6 @@ pub async fn insert_operation<'a>(batch_insert: &SlaveInsert<'a>) -> Result<Opti
     let mut data_vec = Vec::<u8>::new();
     let mut index_vec = Vec::<u8>::new();
     
-    println!("batch_insert_data:   {:?}", batch_insert_data);
     
     let batch_insert_data_size = batch_insert_data.len();
 
