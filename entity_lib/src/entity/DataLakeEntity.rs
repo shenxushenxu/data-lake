@@ -22,13 +22,13 @@ impl <'a>BatchData<'a> {
     }
 
     pub fn get_column_index(&self, column_name: &String) -> Result<usize, DataLakeError> {
-        for index in 0..self.get_data_size() {
+        for index in 0..self.column.len() {
             let name = &self.column[index];
             if name == column_name {
                 return Ok(index);
             }
         }
-        return Err(DataLakeError::custom(format!("{} 主键列不存在", column_name)));
+        return Err(DataLakeError::custom(format!("{} 主键列不存在, {:?} ", column_name, self.column)));
     }
 
     pub fn get_line_map(&self, index: usize) -> HashMap<&'a str, &'a str> {

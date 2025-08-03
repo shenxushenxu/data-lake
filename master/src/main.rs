@@ -2,36 +2,36 @@ mod controls;
 mod mechanism;
 
 use crate::controls::alter::{alter_add, alter_orop};
-use crate::controls::batch_insert::INSERT_TCPSTREAM_CACHE_POOL;
 use crate::controls::compress_table::compress_table;
 use crate::controls::create::create_table;
 use crate::controls::drop_table::drop_table_operation;
 use crate::controls::max_offset::get_max_offset;
-use crate::controls::metadata::{get_metadata, get_table_metadata};
+use crate::controls::metadata::{get_table_metadata};
 use crate::controls::query::query_daql;
-use crate::controls::stream_read::{STREAM_TCP_TABLESTRUCTURE, stream_read_data};
+use crate::controls::stream_read::{stream_read_data};
 use crate::mechanism::replicas::copy_sync_notif;
-use chrono::{Datelike, Local, Timelike};
+use chrono::{Datelike, Timelike};
 use daql_analysis::daql_analysis_function;
 use entity_lib::entity::DaqlEntity::DaqlType;
-use entity_lib::entity::DataLakeEntity::BatchData;
-use entity_lib::entity::Error::DataLakeError;
-use entity_lib::entity::MasterEntity::Statement::batch_insert;
-use entity_lib::entity::MasterEntity::{BatchInsertTruth, Statement};
-use log::{error, info};
-use public_function::{MASTER_CONFIG, MasterConfig, load_properties, write_error};
-use serde_json::json;
-use snap::raw::{Decoder, Encoder};
+use entity_lib::entity::MasterEntity::{Statement};
+use public_function::{MASTER_CONFIG, MasterConfig, load_properties};
+use snap::raw::Decoder;
 use std::any::Any;
-use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Instant;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
-use tokio::sync::Mutex;
-use tokio::sync::mpsc::Receiver;
 use tokio::task::JoinHandle;
 use uuid::Uuid;
+use public_function::BufferObject::{INSERT_TCPSTREAM_CACHE_POOL, STREAM_TCP_TABLESTRUCTURE};
+
+
+
+
+
+#[global_allocator]
+static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 
 /**
 -1 是停止
@@ -283,7 +283,7 @@ fn data_interface() -> JoinHandle<()> {
                                         message_bytes,
                                         arc_uuid_clone,
                                     ).await;
-                                    
+
                                     match batch_return {
                                         Ok(_) => {
                                             write.write_i32(-1).await.unwrap();
@@ -297,7 +297,7 @@ fn data_interface() -> JoinHandle<()> {
                         }
 
                         Err(e) => {
-                            println!("{:?}", e);
+                            
                             // 输入插入连接断开，清理缓存中的连接
                             /**
                             操作	                     危险场景	                  规避方案
@@ -337,8 +337,8 @@ fn data_interface() -> JoinHandle<()> {
                                     stream_tcp_tablestructure.remove(k).unwrap();
                                 });
                             }
-                            
 
+                            println!("{:?}", e);
                             break;
                         }
                     }

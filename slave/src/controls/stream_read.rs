@@ -8,6 +8,14 @@ use tokio::fs::OpenOptions;
 use entity_lib::entity::const_property::INDEX_SIZE;
 use public_function::read_function::ArrayBytesReader;
 
+
+#[tokio::test]
+pub async fn eeee() {
+    
+}
+
+
+
 pub async fn stream_read(streamreadstruct: &StreamReadStruct) -> Result<Option<Vec<u8>>, DataLakeError> {
     let stream_return = data_read(streamreadstruct).await;
     let col_type = &streamreadstruct.table_col_type;
@@ -152,8 +160,8 @@ pub async fn data_read(
         return file_code.parse::<i64>().unwrap();
     });
 
-    let mut offset = streamreadstruct.offset;
-    let mut read_count = streamreadstruct.read_count;
+    let offset = streamreadstruct.offset;
+    let read_count = streamreadstruct.read_count;
     let option_index_path = binary_search(&file_vec, offset).await?;
 
     match option_index_path {
@@ -232,8 +240,8 @@ async fn find_data(index_path: &String, offset: i64, read_count: usize) -> Resul
     }
 
     if start_index.is_none() {
-
-        let bytes_mid = &index_mmap[..start_seek + INDEX_SIZE];
+        // 如果没有找到对应的offset 但是代码执行到了这，就证明找到了offset对应的索引文件，那么就取索引文件内最小的offset
+        let bytes_mid = &index_mmap[..INDEX_SIZE];
         let data_mid = bincode::deserialize::<IndexStruct>(bytes_mid)?;
         start_index = Some(data_mid);
         start_seek = 0;
@@ -256,7 +264,7 @@ async fn find_data(index_path: &String, offset: i64, read_count: usize) -> Resul
         // 结尾的offset位置 没有 超出索引文件的大小
 
         // 获得结尾的 offset
-        let bytes_end = &index_mmap[end_seek..end_seek + INDEX_SIZE];
+        let bytes_end = &index_mmap[(end_seek - INDEX_SIZE)..end_seek];
         let end_index = bincode::deserialize::<IndexStruct>(bytes_end)?;
 
         let mut stream_data = load_data(index_path, &start_index, &end_index).await?;
@@ -275,17 +283,21 @@ async fn load_data(
 
     let start_file_seek = match start_index {
         Some(x) => x.start_seek,
-        None => panic!("妈的二分查找没找到对应的offset"),
+        None => return Err(DataLakeError::custom("妈的二分查找没找到对应的offset".to_string())),
     } as usize;
 
     let data_path = file_path.replace(".index", ".snappy");
-    let mut data_file = OpenOptions::new().read(true).open(data_path).await?;
-
+    let data_file = OpenOptions::new().read(true).open(data_path).await?;
     let data_mmap = unsafe { Mmap::map(&data_file)? };
+    
 
     let end_file_seek = end_index.end_seek as usize;
 
     let read_data = &data_mmap[start_file_seek..end_file_seek];
-
+    
+    let bb = read_data[..4].try_into()?;
+    let cc = i32::from_be_bytes(bb);
+    
+    
     return Ok(read_data.to_vec());
 }

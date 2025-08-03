@@ -161,28 +161,30 @@ pub async fn get_slave_path(table_name: &String) -> Result<String, DataLakeError
 pub struct ArrayBytesReader<'a> {
     data: &'a [u8],
     array_pointer: usize,
+    i32_size: usize,
 }
 impl<'a> ArrayBytesReader<'a> {
     pub fn new(data: &'a [u8]) -> Self {
         return ArrayBytesReader {
             data: data,
             array_pointer: 0,
+            i32_size: size_of::<i32>(),
         };
     }
 
     pub fn read_i32(&mut self) -> Result<i32, DataLakeError> {
-        let size = size_of::<i32>();
 
-        let bytes = self.data[self.array_pointer..self.array_pointer + size].try_into()?;
+        let bytes = self.data[self.array_pointer..(self.array_pointer + self.i32_size)].try_into()?;
         let len = i32::from_be_bytes(bytes);
-
-        self.array_pointer += size;
+        
+        
+        self.array_pointer += self.i32_size;
 
         return Ok(len);
     }
 
     pub fn read_exact(&mut self, len: usize) -> &'a [u8] {
-        let uuu = &self.data[self.array_pointer..self.array_pointer + len];
+        let uuu = &self.data[self.array_pointer..(self.array_pointer + len)];
 
         self.array_pointer += len;
 

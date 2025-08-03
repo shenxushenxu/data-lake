@@ -1,31 +1,27 @@
 use crate::controls::metadata::get_metadata;
-use chrono::{Datelike, Local, Timelike};
-use dashmap::DashMap;
-use entity_lib::entity::DataLakeEntity::{BatchData, PtrByteBatchData, SlaveBatchData};
+use entity_lib::entity::DataLakeEntity::{BatchData, SlaveBatchData};
 use entity_lib::entity::Error::DataLakeError;
-use entity_lib::entity::MasterEntity::{SlaveInsert, TableStructure};
+use entity_lib::entity::MasterEntity::{SlaveInsert};
 use entity_lib::entity::SlaveEntity::SlaveMessage;
 use public_function::PosttingTcpStream::DataLakeTcpStream;
 use public_function::string_trait::StringFunction;
 use rayon::prelude::*;
 use std::collections::HashMap;
 use std::panic::Location;
-use std::sync::{Arc, LazyLock};
+use std::sync::Arc;
 use std::time::Instant;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::sync::{Mutex, RwLock};
-use uuid::Uuid;
-
-pub static INSERT_TCPSTREAM_CACHE_POOL: LazyLock<Arc<DashMap<String, Arc<Mutex<DataLakeTcpStream>>>>> =
-    LazyLock::new(|| Arc::new(DashMap::<String, Arc<Mutex<DataLakeTcpStream>>>::new()));
+use tokio::sync::{Mutex};
+use entity_lib::entity::const_property;
+use public_function::BufferObject::INSERT_TCPSTREAM_CACHE_POOL;
 
 pub async fn batch_insert_data<'a>(
     message_bytes: Vec<u8>,
     uuid: Arc<String>,
 ) -> Result<(), DataLakeError> {
 
-    let box_message = Box::new(message_bytes);
-    let message_leak = Box::leak(box_message);
+    let message_leak = Box::leak(Box::new(message_bytes));
+
 
     // 在独立作用域中完成反序列化
     let batch_data_result = {
@@ -34,27 +30,27 @@ pub async fn batch_insert_data<'a>(
         let slice = unsafe { &*raw_ptr };
         bincode::deserialize::<BatchData>(slice)
     };
+
     
     match batch_data_result {
         Ok(batch_data) => {
-            
 
-            let box_batch_data = Box::new(batch_data);
-            let batch_data_leak = Box::leak(box_batch_data);
+            let batch_data_leak = Box::leak(Box::new(batch_data));
 
             let vec_data_map = &batch_data_leak.data;
+
             if vec_data_map.len() == 0 {
                 unsafe {
                     Box::from_raw(message_leak);
                     Box::from_raw(batch_data_leak);
                 }
-                
+
                 return Ok(());
             }
 
             let table_name = batch_data_leak.table_name;
-            let mut table_structure = match get_metadata(&table_name).await{
-                Ok(table_structure) => table_structure, 
+            let mut table_structure = match get_metadata(&table_name).await {
+                Ok(table_structure) => table_structure,
                 Err(e) => {
                     unsafe {
                         Box::from_raw(message_leak);
@@ -66,12 +62,11 @@ pub async fn batch_insert_data<'a>(
 
             let mut res_map = HashMap::<i32, SlaveBatchData>::new();
 
-
             let major_key = &table_structure.major_key;
             let partition_number = table_structure.partition_number as i32;
 
-            let major_index = match batch_data_leak.get_column_index(major_key){
-                Ok(major_index) => { major_index}
+            let major_index = match batch_data_leak.get_column_index(major_key) {
+                Ok(major_index) => major_index,
                 Err(e) => {
                     unsafe {
                         Box::from_raw(message_leak);
@@ -82,13 +77,17 @@ pub async fn batch_insert_data<'a>(
             };
 
             let column = { batch_data_leak.column.clone() };
-
-            let mut index = batch_data_leak.get_data_size() - 1;
+            
+            
+            let mut index = batch_data_leak.get_data_size();
             loop {
                 if index != 0 {
                     index = index - 1;
                     let line_data = batch_data_leak.get_line(index);
                     let major_value = &line_data[major_index];
+                    if const_property::NULL_STR == *major_value {
+                        return Err(DataLakeError::custom(String::from("主键不能为空")));
+                    }
                     let partition_code = major_value.hash_code() % partition_number;
 
                     res_map
@@ -100,10 +99,10 @@ pub async fn batch_insert_data<'a>(
                 }
             }
 
-            
-
             let mut join_handle_set = tokio::task::JoinSet::new();
             for (partition_code, slave_batch_data) in res_map {
+
+                
                 let table_name_clone = table_name;
 
                 let table_structure_clone = table_structure.clone();
@@ -115,12 +114,12 @@ pub async fn batch_insert_data<'a>(
                     let mut partition_address = table_structure_clone.partition_address.clone();
                     let tcp_key = format!("{}-{}", uuid_clone.as_ref(), partition_code);
 
-                    let is = {
-                        insert_tcpstream_cache_pool.contains_key(&tcp_key)  
-                    };
+                    let is = { insert_tcpstream_cache_pool.contains_key(&tcp_key) };
 
                     let tcp_stream = match is {
-                        true => Arc::clone(insert_tcpstream_cache_pool.get(&tcp_key).unwrap().value()),
+                        true => {
+                            Arc::clone(insert_tcpstream_cache_pool.get(&tcp_key).unwrap().value())
+                        }
                         false => {
                             let partition_address = &mut partition_address;
                             let partition_info_vec = partition_address
@@ -128,33 +127,41 @@ pub async fn batch_insert_data<'a>(
                                 .unwrap();
 
                             let stream = DataLakeTcpStream::connect(partition_info_vec).await?;
-                            insert_tcpstream_cache_pool.insert(tcp_key.clone(), Arc::new(Mutex::new(stream)));
-                            Arc::clone(insert_tcpstream_cache_pool.get(&tcp_key).unwrap().value())
+
+                            let ref_tcp = insert_tcpstream_cache_pool
+                                .entry(tcp_key.clone())
+                                .or_insert_with(|| Arc::new(Mutex::new(stream)));
+
+                            Arc::clone(ref_tcp.value())
                         }
                     };
 
                     let mut stream = tcp_stream.lock().await;
-
-
                     let slave_insert = SlaveInsert {
                         table_name: table_name_clone,
                         data: slave_batch_data,
                         partition_code: partition_code.to_string(),
                         table_structure: table_structure_clone,
                     };
+
+
+
                     let slave_message = SlaveMessage::batch_insert;
 
                     let bytes = bincode::serialize(&slave_message)?;
+
                     let bytes_len = bytes.len() as i32;
+
                     stream.write_i32(bytes_len).await?;
                     stream.write_all(&bytes).await?;
-                    
-                    
-                    let batch_slave_data = bincode::serialize(&slave_insert)?;
-                    let batch_slave_len = batch_slave_data.len() as i32;
-                    stream.write_i32(batch_slave_len).await?;
-                    stream.write_all(&batch_slave_data).await?;
 
+                    let batch_slave_data = bincode::serialize(&slave_insert)?;
+
+                    let batch_slave_len = batch_slave_data.len() as i32;
+
+                    stream.write_i32(batch_slave_len).await?;
+
+                    stream.write_all(&batch_slave_data).await?;
                     
                     let bytes_len = stream.read_i32().await?;
                     if bytes_len == -2 {
@@ -195,8 +202,7 @@ pub async fn batch_insert_data<'a>(
                 Box::from_raw(batch_data_leak);
             }
             return Ok(());
-            
-        },
+        }
         Err(e) => {
 
             unsafe {
@@ -204,12 +210,8 @@ pub async fn batch_insert_data<'a>(
             }
             return Err(DataLakeError::BincodeError {
                 source: e,
-                location: Location::caller()
+                location: Location::caller(),
             });
-
-
-
         }
     };
-
 }

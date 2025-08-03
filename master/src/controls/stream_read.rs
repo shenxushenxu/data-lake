@@ -10,12 +10,7 @@ use tokio::net::TcpStream;
 use tokio::sync::Mutex;
 use tokio::sync::mpsc::Receiver;
 use tokio::task::JoinError;
-
-pub static STREAM_TCP_TABLESTRUCTURE: LazyLock<
-    Arc<DashMap<String, Mutex<(TcpStream, TableStructure)>>>,
-> = LazyLock::new(||{
-    Arc::new(DashMap::<String, Mutex<(TcpStream, TableStructure)>>::new())
-});
+use public_function::BufferObject::STREAM_TCP_TABLESTRUCTURE;
 
 pub async fn stream_read_data(
     masterstreamread: MasterStreamRead,
@@ -48,7 +43,7 @@ pub async fn stream_read_data(
         }
     
 
-    let ta_na = Arc::new(table_name);
+    let arc_table_name = Arc::new(table_name);
     
     let mut join_handle_set = tokio::task::JoinSet::new();
     
@@ -71,7 +66,7 @@ pub async fn stream_read_data(
 
         let table_name_clone = table_structure.table_name.clone();
 
-        let arc_ta_name = Arc::clone(&ta_na);
+        let arc_ta_name = Arc::clone(&arc_table_name);
 
         let map_key = format!("{}_{}_{}", uuid, arc_ta_name.as_ref(), partition_code);
 
@@ -81,22 +76,24 @@ pub async fn stream_read_data(
             
             let ref_mutex = match stream_tcp_tablestructure.contains_key(&map_key) {
                 true => {
-                    stream_tcp_tablestructure.get(&map_key).unwrap()
+                    Arc::clone(stream_tcp_tablestructure.get(&map_key).unwrap().value())
                 },
                 false => {
                     let address = &partition_info.address;
                     let mut stream = TcpStream::connect(address).await?;
-
                     
                     let tablestructure = get_metadata(arc_ta_name.as_ref()).await?;
-                    stream_tcp_tablestructure.insert(map_key.clone(), Mutex::new((stream, tablestructure)));
 
-                    stream_tcp_tablestructure.get(&map_key).unwrap()
+                    let ref_value = stream_tcp_tablestructure.entry(map_key.clone()).or_insert_with(|| {
+                        Arc::new(Mutex::new((stream, tablestructure)))
+                    });
+                    
+                    Arc::clone(ref_value.value())
                 }
             };
 
-            let mutex = ref_mutex.value();
-            let mut mutex_guard = mutex.lock().await;
+            // let mutex = ref_mutex.value();
+            let mut mutex_guard = ref_mutex.lock().await;
             
             let col_type = {
                 let tablestructure = &mutex_guard.1;

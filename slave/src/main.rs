@@ -4,22 +4,14 @@ mod mechanism;
 use crate::controls::compress_table::compress_table;
 use crate::controls::create_table::create_table_controls;
 use crate::controls::drop_table::drop_table_operation;
-// use crate::controls::insert_data::insert_operation;
 use crate::controls::query_table::query;
 use crate::controls::stream_read::stream_read;
-use entity_lib::entity::Error::DataLakeError;
-use entity_lib::entity::MasterEntity::{QueryItem, SlaveInsert};
-use entity_lib::entity::SlaveEntity::SlaveMessage::drop_table;
-use entity_lib::entity::SlaveEntity::{QueryMessage, ReplicaseSyncData, SlaveMessage};
-use log::{error, info};
+use entity_lib::entity::MasterEntity::SlaveInsert;
+use entity_lib::entity::SlaveEntity::SlaveMessage;
 use public_function::{load_properties, SlaveConfig, SLAVE_CONFIG};
-use std::path;
-use std::path::Path;
-use std::time::Instant;
-use chrono::{Datelike, Local, Timelike};
+use chrono::{Datelike, Timelike};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
-use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 use uuid::Uuid;
 use crate::controls::max_offset::get_max_offset;
@@ -27,7 +19,8 @@ use crate::mechanism::replicas::{follower_replicas_sync, Leader_replicas_sync};
 
 
 
-
+#[global_allocator]
+static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
 /**
 消息返回 
@@ -55,12 +48,12 @@ async fn main() {
             .map(|x| x.trim().to_string())
             .collect::<Vec<String>>();
         
-        let slave_file_segment_bytes = slave_file_segment_bytes.parse::<usize>().unwrap();
+        let slave_file_segment_bytes = slave_file_segment_bytes.parse::<usize>().unwrap() * 1048576;
         let slave_replicas_sync_num = slave_replicas_sync_num.parse::<usize>().unwrap();
 
         let mut slave_config = SLAVE_CONFIG.lock().await;
         unsafe {
-            *slave_config = SlaveConfig::new(slave_node, slave_data_vec, slave_file_segment_bytes, slave_replicas_sync_num);
+            *slave_config = SlaveConfig::new(slave_node, slave_data_vec, slave_file_segment_bytes , slave_replicas_sync_num);
         }
     }
     
@@ -282,7 +275,7 @@ fn data_read_write() -> JoinHandle<()> {
                                 }
                             }
 
-                            info!("master 与 slave 的连接断开了:  {}", e);
+                            // println!("master 与 slave 的连接断开了:  {}", e);
                             break;
                         }
                     }

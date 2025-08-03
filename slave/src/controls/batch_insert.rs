@@ -20,13 +20,11 @@ use dashmap::DashMap;
 use tokio::fs::OpenOptions;
 use tokio::io::{AsyncSeekExt, AsyncWriteExt};
 use tokio::sync::{Mutex};
-
-pub static FILE_CACHE_POOL: LazyLock<Arc<DashMap<String, Arc<Mutex<SlaveCacheStruct>>>>> =
-    LazyLock::new(|| {
-        Arc::new(DashMap::<String, Arc<Mutex<SlaveCacheStruct>>>::new())
-    });
+use public_function::BufferObject::FILE_CACHE_POOL;
 
 pub async fn batch_insert_data<'a>(batch_insert: SlaveInsert<'a>) -> Result<(), DataLakeError> {
+
+    
     
     match insert_operation(&batch_insert).await{
         Ok(is) => {
@@ -113,8 +111,10 @@ pub async fn insert_operation<'a>(batch_insert: &SlaveInsert<'a>) -> Result<Opti
                 metadata_mmap: metadata_mmap,
             };
 
-            file_cache_pool.insert(file_key.clone(), Arc::new(Mutex::new(slave_cache_struct)));
-            let ref_value = file_cache_pool.get(&file_key).unwrap();
+            
+            let ref_value = file_cache_pool.entry(file_key.clone()).or_insert_with(||{
+                Arc::new(Mutex::new(slave_cache_struct))
+            });
             Arc::clone(ref_value.value())
             
         }
@@ -123,11 +123,11 @@ pub async fn insert_operation<'a>(batch_insert: &SlaveInsert<'a>) -> Result<Opti
             Arc::clone(ref_value.value())
         }
     };
-    
-    
-    
-    
-    
+
+
+
+
+
 
     let mut slave_cache_struct = mutex_slave_cache_struct.lock().await;
 
@@ -139,7 +139,6 @@ pub async fn insert_operation<'a>(batch_insert: &SlaveInsert<'a>) -> Result<Opti
 
     let mut data_vec = Vec::<u8>::new();
     let mut index_vec = Vec::<u8>::new();
-    
     
     let batch_insert_data_size = batch_insert_data.len();
 
@@ -159,7 +158,6 @@ pub async fn insert_operation<'a>(batch_insert: &SlaveInsert<'a>) -> Result<Opti
             offset: &offset_init,
         };
 
-        // let json_value = serde_json::to_string(&data)?;
         let value = bincode::serialize(&data)?;
         let mut encoder = Encoder::new();
         let mut compressed_data = encoder.compress_vec(value.as_slice())?;
@@ -209,6 +207,8 @@ pub async fn insert_operation<'a>(batch_insert: &SlaveInsert<'a>) -> Result<Opti
         slave_config.slave_file_segment_bytes as u64
     };
     let data_file_seek = slave_cache_struct.data_file.seek(SeekFrom::End(0)).await?;
+    
+
 
     if data_file_seek > slave_file_segment_bytes {
         slave_cache_struct.data_file.flush().await?;

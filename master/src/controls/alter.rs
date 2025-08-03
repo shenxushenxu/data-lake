@@ -6,7 +6,7 @@ use tokio::fs::{File};
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
 use entity_lib::entity::MasterEntity::{ColumnConfigJudgment, DataType, TableStructure};
-use crate::controls::stream_read::STREAM_TCP_TABLESTRUCTURE;
+use public_function::BufferObject::STREAM_TCP_TABLESTRUCTURE;
 
 pub async fn alter_orop(alteradd: (String, String)) -> Result<(), DataLakeError> {
     let table_name = alteradd.0;

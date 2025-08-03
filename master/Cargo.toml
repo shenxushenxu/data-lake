@@ -15,6 +15,8 @@ snap = {workspace = true}
 rayon = {workspace = true}
 chrono = {workspace = true}
 dashmap = { workspace = true }
+mimalloc = {workspace = true}
+
 
 entity_lib = {path = "../entity_lib"}
 public_function = {path = "../public_function"}

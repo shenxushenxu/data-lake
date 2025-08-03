@@ -54,9 +54,15 @@ impl DataLakeTcpStream {
     }
 
     pub async fn write_i32(&mut self, n: i32) -> Result<(), DataLakeError> {
-        self.stream.write_i32(n).await?;
-
+        match self.stream.write_i32(n).await{
+            Ok(_) => {
+            }
+            Err(_) => {
+                
+            }
+        }
         return Ok(());
+
     }
 
     pub async fn write_all<'a>(&'a mut self, src: &'a [u8]) -> Result<(), DataLakeError> {

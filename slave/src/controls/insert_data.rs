@@ -13,7 +13,6 @@ use entity_lib::entity::MasterEntity::Insert;
 use entity_lib::entity::SlaveEntity::{DataStructure, IndexStruct, SlaveCacheStruct};
 use public_function::read_function::get_slave_path;
 use public_function::SLAVE_CONFIG;
-use crate::controls::batch_insert::FILE_CACHE_POOL;
 
 // pub async fn insert_operation(insert: Insert) -> Result<(), DataLakeError>{
 // 

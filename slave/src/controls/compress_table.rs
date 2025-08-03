@@ -89,15 +89,15 @@ pub async fn compress_table(table_name: &String, uuid: &String) -> Result<(), Da
     };
     
 
-    for (key, (position, len)) in res_map.into_iter() {
+    for (_, (position, len)) in res_map.into_iter() {
         let data_bytes = &temp_mmap[position..(position + len)];
         let mut value = bincode::deserialize::<DataStructure>(&data_bytes)?;
 
         value.offset = offset;
-        let json_value = serde_json::to_string_pretty(&value)?;
+        let bincode_value = bincode::serialize(&value)?;
 
         let mut encoder = Encoder::new();
-        let compressed_data = encoder.compress_vec(json_value.as_bytes())?;
+        let compressed_data = encoder.compress_vec(bincode_value.as_slice())?;
 
         let data_len = compressed_data.len() as i32;
 
@@ -119,6 +119,11 @@ pub async fn compress_table(table_name: &String, uuid: &String) -> Result<(), Da
         offset += 1;
 
         if end_seek > file_max_capacity {
+
+            compress_file.flush().await?;
+            index_file.flush().await?;
+            
+            
             let tmp_file_name = get_tmp_file_name();
 
             compress_file = OpenOptions::new()

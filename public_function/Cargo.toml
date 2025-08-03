@@ -11,5 +11,6 @@ snap = {workspace = true}
 uuid = { workspace = true}
 memmap2 = {workspace = true}
 rand = {workspace = true}
+dashmap = { workspace = true }
 
 entity_lib = {path = "../entity_lib"}

@@ -27,6 +27,19 @@ pub async fn create_table(table_structure: TableStructure) -> Result<(), DataLak
         }
     }
 
+    let data_path = master_config.get_master_data_path().await;
+    let file_path = format!(
+        "{}/{}",
+        data_path,
+        &table_structure.table_name
+    );
+    let mut file = OpenOptions::new()
+        .write(true)
+        .create(true)
+        .open(&file_path)
+        .await?;
+    let bincode_table_structure = bincode::serialize(&table_structure)?;
+    file.write_all(&bincode_table_structure).await?;
     
     
     let partition_address = &table_structure.partition_address;
@@ -55,19 +68,7 @@ pub async fn create_table(table_structure: TableStructure) -> Result<(), DataLak
         }
     }
 
-    let data_path = master_config.get_master_data_path().await;
-    let file_path = format!(
-        "{}/{}",
-        data_path,
-        &table_structure.table_name
-    );
-    let mut file = OpenOptions::new()
-        .write(true)
-        .create(true)
-        .open(&file_path)
-        .await?;
-    let bincode_table_structure = bincode::serialize(&table_structure)?;
-    file.write_all(&bincode_table_structure).await?;
+    
 
     
     return Ok(());

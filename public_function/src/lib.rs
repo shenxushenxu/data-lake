@@ -3,6 +3,7 @@ pub mod RandomNumber;
 pub mod read_function;
 pub mod string_trait;
 pub mod vec_trait;
+pub mod BufferObject;
 
 use entity_lib::entity::Error::DataLakeError;
 use std::collections::HashMap;
@@ -46,15 +47,13 @@ impl MasterConfig {
         let master_data_path = &self.master_data_path;
 
         
-        let mut data_path_index = self.data_path_index;
-        
-        if data_path_index >= master_data_path.len() {
+        if self.data_path_index >= master_data_path.len() {
             self.data_path_index = 0;
         }
         
-        let data_path = master_data_path[data_path_index].clone();
+        let data_path = master_data_path[self.data_path_index].clone();
 
-        self.data_path_index = data_path_index + 1;
+        self.data_path_index = self.data_path_index + 1;
         
         return data_path;
     }
