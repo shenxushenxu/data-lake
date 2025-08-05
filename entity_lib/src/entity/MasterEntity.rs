@@ -91,7 +91,7 @@ pub struct Insert {
 pub struct SlaveInsert<'a > {
     pub table_name: &'a str,
     pub data: SlaveBatchData<'a>,
-    pub partition_code: String,
+    pub partition_code: i32,
     pub table_structure: TableStructure
 }
 

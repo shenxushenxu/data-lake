@@ -2,31 +2,24 @@ use entity_lib::entity::Error::DataLakeError;
 use entity_lib::entity::MasterEntity::{
     ColumnConfigJudgment, DataType, SlaveInsert, TableStructure,
 };
-use entity_lib::entity::SlaveEntity::{DataStructureSerialize, IndexStructSerialize, SlaveCacheStruct};
-use entity_lib::entity::const_property::{
-    CRUD_TYPE, DATA_FILE_EXTENSION, I32_BYTE_LEN, INDEX_FILE_EXTENSION, LOG_FILE, METADATA_LOG,
-};
+use entity_lib::entity::SlaveEntity::{DataStructure, IndexStruct, SlaveCacheStruct};
+use entity_lib::entity::const_property::{CRUD_TYPE, DATA_FILE_EXTENSION, I32_BYTE_LEN, INDEX_FILE_EXTENSION, INDEX_SIZE, LOG_FILE, METADATA_LOG};
 use memmap2::MmapMut;
+use public_function::BufferObject::FILE_CACHE_POOL;
 use public_function::SLAVE_CONFIG;
 use public_function::read_function::get_slave_path;
 use public_function::vec_trait::VecPutVec;
 use rayon::prelude::*;
-use snap::raw::Encoder;
 use std::collections::HashMap;
-use std::io::SeekFrom;
-use std::sync::{Arc, LazyLock};
+use std::sync::Arc;
 use std::time::Instant;
-use dashmap::DashMap;
+use snap::raw::Encoder;
 use tokio::fs::OpenOptions;
-use tokio::io::{AsyncSeekExt, AsyncWriteExt};
-use tokio::sync::{Mutex};
-use public_function::BufferObject::FILE_CACHE_POOL;
+use tokio::io::AsyncWriteExt;
+use tokio::sync::Mutex;
 
 pub async fn batch_insert_data<'a>(batch_insert: SlaveInsert<'a>) -> Result<(), DataLakeError> {
-
-    
-    
-    match insert_operation(&batch_insert).await{
+    match insert_operation(&batch_insert).await {
         Ok(is) => {
             if let Some(file_key) = is {
                 let file_cache_pool = Arc::clone(&FILE_CACHE_POOL);
@@ -40,35 +33,147 @@ pub async fn batch_insert_data<'a>(batch_insert: SlaveInsert<'a>) -> Result<(), 
     }
 }
 
-pub async fn insert_operation<'a>(batch_insert: &SlaveInsert<'a>) -> Result<Option<String>, DataLakeError> {
+pub async fn insert_operation<'a>(
+    batch_insert: &SlaveInsert<'a>,
+) -> Result<Option<String>, DataLakeError> {
     let table_name = &batch_insert.table_name;
-    let partition_code = &batch_insert.partition_code;
+    let partition_code = batch_insert.partition_code;
+    let batch_data = &batch_insert.data;
 
-    let mut batch_insert_data = batch_insert.data.get_map();
-    
     let table_structure = &batch_insert.table_structure;
     let major_key = table_structure.major_key.as_str();
-
-    batch_insert_data.par_iter().try_for_each(|insert_single| {
-        match batch_format_matching(insert_single, table_structure) {
-            Ok(_) => return Ok(()),
-            Err(e) => {
-                return Err(e);
-            }
-        }
-    })?;
-
     let file_key = format!("{}-{}", table_name, partition_code);
 
-    let file_cache_pool = Arc::clone(&FILE_CACHE_POOL);
+    let mutex_slave_cache_struct = get_cache_file_object(&file_key).await?;
+
+    let mut slave_cache_struct = mutex_slave_cache_struct.lock().await;
+
     
-    let is = {
-        file_cache_pool.contains_key(&file_key)
+    let batch_insert_data_size = batch_data.get_data_size();
+
+    let start = Instant::now();
+
+    // 定义 offset 变量
+    let mut offset_init = get_offset(None, &file_key).await?;
+    
+    let mut vec_data_structure = (0..batch_insert_data_size)
+        .collect::<Vec<usize>>()
+        .into_par_iter()
+        .map(|index| {
+            let mut insert_single = batch_data.get_line_map(index);
+            batch_format_matching(&insert_single, table_structure)?;
+            let major_value = insert_single.remove(major_key).unwrap();
+            let crud_type = insert_single.remove(CRUD_TYPE).unwrap();
+
+            let offset = offset_init + (index as i64);
+            
+            let data = DataStructure {
+                table_name: table_name,
+                major_value: major_value,
+                data: insert_single,
+                _crud_type: crud_type,
+                partition_code: partition_code,
+                offset: offset,
+            };
+
+            let vec_mess = bincode::serialize(&data)?;
+
+            let mut encoder = Encoder::new();
+            let compressed_data = encoder.compress_vec(&vec_mess)?;
+            
+
+            Ok((index as i32, compressed_data))
+        })
+        .collect::<Result<Vec<(i32, Vec<u8>)>, DataLakeError>>()?;
+
+
+    vec_data_structure.sort_by_key(|x| -x.0);
+
+    
+    let mut start_seek = slave_cache_struct.data_file.metadata().await?.len();
+    
+    let mut data_vec = Vec::<u8>::new();
+    let mut index_vec = Vec::<u8>::with_capacity(vec_data_structure.len() * INDEX_SIZE);
+    
+    for (_, data_structre_vecu8) in vec_data_structure.iter_mut() {
+            let data_len = data_structre_vecu8.len() as i32;
+        
+            data_vec.put_i32_vec(data_len);
+            data_vec.put_vec(data_structre_vecu8);
+        
+            let end_seek = start_seek + (I32_BYTE_LEN as u64) + (data_len as u64) ;
+        
+            let index_struct = IndexStruct {
+                offset: offset_init,
+                start_seek: start_seek,
+                end_seek: end_seek,
+            };
+        
+            let mut index_data = bincode::serialize(&index_struct)?;
+        
+            index_vec.put_vec(&mut index_data);
+        
+            offset_init = offset_init + 1;
+            start_seek = end_seek;
+    }
+    
+
+    println!(
+        "for index in (0..batch_insert_data_size).rev():    {:?}",
+        start.elapsed()
+    );
+
+    let start = Instant::now();
+
+    slave_cache_struct
+        .data_file
+        .write_all(data_vec.as_slice())
+        .await?;
+    slave_cache_struct
+        .index_file
+        .write_all(index_vec.as_slice())
+        .await?;
+
+    println!("写入文件的时长:    {:?}", start.elapsed());
+
+    unsafe {
+        let dst_ptr = slave_cache_struct.metadata_mmap.as_mut_ptr();
+        let slice = offset_init.to_be_bytes();
+        let src_ptr = slice.as_ptr();
+
+        std::ptr::copy_nonoverlapping(src_ptr, dst_ptr, slice.len());
+    }
+
+    let slave_file_segment_bytes = {
+        let slave_config = SLAVE_CONFIG.lock().await;
+        slave_config.slave_file_segment_bytes as u64
     };
-    
+    let data_file_len = slave_cache_struct.data_file.metadata().await?.len();
+
+    if data_file_len > slave_file_segment_bytes {
+        slave_cache_struct.data_file.flush().await?;
+        slave_cache_struct.index_file.flush().await?;
+
+        return Ok(Some(file_key.clone()));
+    }
+    println!("unsafe:    {:?}", start.elapsed());
+
+    return Ok(None);
+}
+
+/**
+获得 缓存的文件对象
+**/
+async fn get_cache_file_object(
+    file_key: &String,
+) -> Result<Arc<Mutex<SlaveCacheStruct>>, DataLakeError> {
+    let file_cache_pool = Arc::clone(&FILE_CACHE_POOL);
+
+    let is = { file_cache_pool.contains_key(file_key) };
+
     let mutex_slave_cache_struct = match is {
         false => {
-            let partition_path = get_slave_path(&file_key).await?;
+            let partition_path = get_slave_path(file_key).await?;
 
             let metadata_file_path = format!("{}/{}", partition_path, METADATA_LOG);
 
@@ -81,7 +186,7 @@ pub async fn insert_operation<'a>(batch_insert: &SlaveInsert<'a>) -> Result<Opti
             let mut metadata_mmap = unsafe { MmapMut::map_mut(&metadata_file)? };
 
             // 定义 offset 变量
-            let offset_file_name = get_offset(None, &file_key).await?;
+            let offset_file_name = get_offset(None, file_key).await?;
 
             let log_file_path = format!(
                 "{}/{}/{}{}",
@@ -111,119 +216,19 @@ pub async fn insert_operation<'a>(batch_insert: &SlaveInsert<'a>) -> Result<Opti
                 metadata_mmap: metadata_mmap,
             };
 
-            
-            let ref_value = file_cache_pool.entry(file_key.clone()).or_insert_with(||{
-                Arc::new(Mutex::new(slave_cache_struct))
-            });
+            let ref_value = file_cache_pool
+                .entry(file_key.clone())
+                .or_insert_with(|| Arc::new(Mutex::new(slave_cache_struct)));
             Arc::clone(ref_value.value())
-            
         }
         true => {
-            let ref_value = file_cache_pool.get(&file_key).unwrap();
+            let ref_value = file_cache_pool.get(file_key).unwrap();
             Arc::clone(ref_value.value())
         }
     };
 
-
-
-
-
-
-    let mut slave_cache_struct = mutex_slave_cache_struct.lock().await;
-
-    // 定义 offset 变量
-    let mut offset_init = get_offset(None, &file_key).await?;
-
-    let mut start_seek = slave_cache_struct.data_file.seek(SeekFrom::End(0)).await?;
-
-
-    let mut data_vec = Vec::<u8>::new();
-    let mut index_vec = Vec::<u8>::new();
-    
-    let batch_insert_data_size = batch_insert_data.len();
-
-    for index in (0..batch_insert_data_size).rev() {
-        
-        let mut insert_single = unsafe{batch_insert_data.get_unchecked_mut(index)};
-        
-        let major_value = insert_single.remove(major_key).unwrap();
-        let crud_type = insert_single.remove(CRUD_TYPE).unwrap();
-
-        let data = DataStructureSerialize {
-            table_name: table_name,
-            major_value: major_value,
-            data: insert_single,
-            _crud_type: crud_type,
-            partition_code: partition_code,
-            offset: &offset_init,
-        };
-
-        let value = bincode::serialize(&data)?;
-        let mut encoder = Encoder::new();
-        let mut compressed_data = encoder.compress_vec(value.as_slice())?;
-
-        let data_len = compressed_data.len() as i32;
-
-        data_vec.put_i32_vec(data_len);
-        data_vec.put_vec(&mut compressed_data);
-
-        let end_seek = start_seek + (data_len as u64) + (I32_BYTE_LEN as u64);
-
-        let index_struct = IndexStructSerialize {
-            offset: &offset_init,
-            start_seek: start_seek,
-            end_seek: end_seek,
-        };
-
-        let mut index_data = bincode::serialize(&index_struct)?;
-
-        index_vec.put_vec(&mut index_data);
-
-        offset_init = offset_init + 1;
-        start_seek = end_seek;
-    }
-
-   
-
-    slave_cache_struct
-        .data_file
-        .write_all(data_vec.as_slice())
-        .await?;
-    slave_cache_struct
-        .index_file
-        .write_all(index_vec.as_slice())
-        .await?;
-
-    unsafe {
-        let dst_ptr = slave_cache_struct.metadata_mmap.as_mut_ptr();
-        let slice = offset_init.to_be_bytes();
-        let src_ptr = slice.as_ptr();
-
-        std::ptr::copy_nonoverlapping(src_ptr, dst_ptr, slice.len());
-    }
-
-    let slave_file_segment_bytes = {
-        let slave_config = SLAVE_CONFIG.lock().await;
-        slave_config.slave_file_segment_bytes as u64
-    };
-    let data_file_seek = slave_cache_struct.data_file.seek(SeekFrom::End(0)).await?;
-    
-
-
-    if data_file_seek > slave_file_segment_bytes {
-        slave_cache_struct.data_file.flush().await?;
-        slave_cache_struct.index_file.flush().await?;
-
-        return Ok(Some(file_key.clone()));
-    }
-
-    return Ok(None);
+    return Ok(mutex_slave_cache_struct);
 }
-
-
-
-
-
 
 /**
 获得 当前数据的offset

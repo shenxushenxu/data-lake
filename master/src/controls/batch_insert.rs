@@ -10,6 +10,7 @@ use std::collections::HashMap;
 use std::panic::Location;
 use std::sync::Arc;
 use std::time::Instant;
+use chrono::{DateTime, Utc};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::{Mutex};
 use entity_lib::entity::const_property;
@@ -98,7 +99,9 @@ pub async fn batch_insert_data<'a>(
                     break;
                 }
             }
-
+            
+            let start = Instant::now();
+            
             let mut join_handle_set = tokio::task::JoinSet::new();
             for (partition_code, slave_batch_data) in res_map {
 
@@ -111,6 +114,10 @@ pub async fn batch_insert_data<'a>(
 
                 let insert_tcpstream_cache_pool = Arc::clone(&INSERT_TCPSTREAM_CACHE_POOL);
                 join_handle_set.spawn(async move {
+
+                    let start = Instant::now();
+
+
                     let mut partition_address = table_structure_clone.partition_address.clone();
                     let tcp_key = format!("{}-{}", uuid_clone.as_ref(), partition_code);
 
@@ -140,30 +147,26 @@ pub async fn batch_insert_data<'a>(
                     let slave_insert = SlaveInsert {
                         table_name: table_name_clone,
                         data: slave_batch_data,
-                        partition_code: partition_code.to_string(),
+                        partition_code: partition_code,
                         table_structure: table_structure_clone,
                     };
 
 
 
-                    let slave_message = SlaveMessage::batch_insert;
+                    let slave_message = SlaveMessage::batch_insert(slave_insert);
 
                     let bytes = bincode::serialize(&slave_message)?;
 
+                    
                     let bytes_len = bytes.len() as i32;
 
                     stream.write_i32(bytes_len).await?;
                     stream.write_all(&bytes).await?;
+                    println!("bincode::serialize  {:?}", start.elapsed());
 
-                    let batch_slave_data = bincode::serialize(&slave_insert)?;
-
-                    let batch_slave_len = batch_slave_data.len() as i32;
-
-                    stream.write_i32(batch_slave_len).await?;
-
-                    stream.write_all(&batch_slave_data).await?;
-                    
+                    let start = Instant::now();
                     let bytes_len = stream.read_i32().await?;
+                
                     if bytes_len == -2 {
                         let meass_len = stream.read_i32().await?;
                         let mut message = vec![0; meass_len as usize];
@@ -172,10 +175,13 @@ pub async fn batch_insert_data<'a>(
                         let message_str = String::from_utf8(message)?;
                         return Err(DataLakeError::custom(message_str));
                     }
+                    println!("stream.read_i32()  {:?}", start.elapsed());
+
+
                     return Ok(());
                 });
             }
-
+            
             while let Some(res) = join_handle_set.join_next().await {
                 match res {
                     Ok(ee) => {
@@ -201,7 +207,16 @@ pub async fn batch_insert_data<'a>(
                 Box::from_raw(message_leak);
                 Box::from_raw(batch_data_leak);
             }
+
+            println!("join_handle_set: {:?}", start.elapsed());
+
+
+
             return Ok(());
+            
+            
+            
+            
         }
         Err(e) => {
 

@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use memmap2::MmapMut;
 use serde::{Deserialize, Serialize};
 use tokio::fs::File;
+use tokio::io::BufWriter;
 use crate::entity::MasterEntity::{ColumnConfigJudgment, DataType, Insert, QueryItem, SlaveInsert};
 
 /**
@@ -26,13 +27,14 @@ pub struct QueryMessage{
 发送给从节点的消息体
 **/
 #[derive(Serialize, Deserialize, Debug)]
-pub enum SlaveMessage{
+#[serde(bound(deserialize = "'de: 'a"))]
+pub enum SlaveMessage<'a>{
     create(SlaveCreate),
     query(QueryMessage),
     insert(Insert),
     compress_table(String),
     stream_read(StreamReadStruct),
-    batch_insert,
+    batch_insert(SlaveInsert<'a>),
     drop_table(String),
     follower_replicas_sync(ReplicasSyncStruct),
     leader_replicas_sync(SyncMessage),
@@ -70,49 +72,19 @@ pub struct SlaveCacheStruct{
     pub metadata_mmap: MmapMut,
 }
 
-impl SlaveCacheStruct{
-    pub fn get_data_file<'a>(&'a mut self) -> &'a mut File{
-        return &mut self.data_file;
-    }
-    pub fn get_index_file<'a>(&'a mut self) -> &'a mut File{
-        return &mut self.index_file;
-    }
-    pub fn get_metadata_mmap<'a>(&'a mut self) -> &'a mut MmapMut{
-        return &mut self.metadata_mmap;
-    }
-}
-
 
 /**
 index 的结构体
 **/
 
 #[derive(Serialize,Deserialize, Debug)]
+#[repr(C)]
 pub struct IndexStruct{
     pub offset: i64,
     pub start_seek: u64,
     pub end_seek: u64,
 }
 
-#[derive(Serialize, Debug)]
-pub struct IndexStructSerialize<'a>{
-    pub offset: &'a i64,
-    pub start_seek: u64,
-    pub end_seek: u64,
-}
-
-/**
-数据落文件的  结构体
-**/
-#[derive(Serialize, Debug)]
-pub struct DataStructureSerialize<'a> {
-    pub table_name: &'a str,
-    pub major_value: &'a str,
-    pub data: &'a HashMap<&'a str, &'a str>,
-    pub _crud_type: &'a str,
-    pub partition_code: &'a str,
-    pub offset: &'a i64
-}
 
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -121,7 +93,7 @@ pub struct DataStructure<'a> {
     pub major_value: &'a str,
     pub data: HashMap<&'a str, &'a str>,
     pub _crud_type: &'a str,
-    pub partition_code: &'a str,
+    pub partition_code: i32,
     pub offset: i64
 }
 

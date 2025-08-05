@@ -28,7 +28,9 @@ impl DataLakeTcpStream {
 
         
         let stream = match TcpStream::connect(address).await {
-            Ok(stream) => Ok(stream),
+            Ok(stream) => {
+                Ok(stream)
+            },
             Err(_) => {
                 par_info_vec.iter_mut().for_each(|x| {
                     if let Info::Leader = x.info {
@@ -48,7 +50,9 @@ impl DataLakeTcpStream {
         };
 
         match stream {
-            Ok(stream) => Ok(DataLakeTcpStream { stream }),
+            Ok(stream) => {
+                Ok(DataLakeTcpStream { stream })
+            },
             Err(e) => Err(e),
         }
     }

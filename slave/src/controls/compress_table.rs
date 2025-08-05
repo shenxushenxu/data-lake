@@ -96,15 +96,12 @@ pub async fn compress_table(table_name: &String, uuid: &String) -> Result<(), Da
         value.offset = offset;
         let bincode_value = bincode::serialize(&value)?;
 
-        let mut encoder = Encoder::new();
-        let compressed_data = encoder.compress_vec(bincode_value.as_slice())?;
-
-        let data_len = compressed_data.len() as i32;
+        let data_len = bincode_value.len() as i32;
 
         let start_seek = compress_file.seek(SeekFrom::End(0)).await?;
 
         compress_file.write_i32(data_len).await?;
-        compress_file.write_all(&compressed_data).await?;
+        compress_file.write_all(&bincode_value).await?;
         let end_seek = compress_file.seek(SeekFrom::End(0)).await?;
 
         let index_struct = IndexStruct {

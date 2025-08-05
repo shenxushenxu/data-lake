@@ -52,8 +52,7 @@ pub async fn data_duplicate_removal(file_vec: Vec<String>, uuid:&String) -> Resu
                     let mut message = vec![0u8; message_len as usize];
 
                     file.read_exact(&mut message).await?;
-
-
+                    
                     let mut decoder = Decoder::new();
                     let message_bytes = decoder
                         .decompress_vec(&message)?;

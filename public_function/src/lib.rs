@@ -15,6 +15,7 @@ use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tokio::net::tcp::WriteHalf;
 use tokio::sync::Mutex;
+use entity_lib::entity::const_property;
 use entity_lib::entity::MasterEntity::{ColumnConfigJudgment, DataType};
 
 pub struct MasterConfig {
@@ -278,7 +279,7 @@ pub async fn read_error(stream: &mut TcpStream) -> Result<(), DataLakeError> {
 
 
 // 填充默认值
-pub async fn data_complete<'a>(
+pub fn data_complete<'a>(
     col_type: &'a HashMap<String, (DataType, ColumnConfigJudgment, Option<String>)>,
     data: &mut HashMap<&'a str, &'a str>,
     major_value: &'a str
@@ -291,7 +292,7 @@ pub async fn data_complete<'a>(
                 if let ColumnConfigJudgment::PRIMARY_KEY =value.1{
                     insert_map.insert(key.as_str(), major_value);
                 }else {
-                    insert_map.insert(key.as_str(), "");
+                    insert_map.insert(key.as_str(), const_property::NULL_STR);
                 }
                 
             }
@@ -303,6 +304,8 @@ pub async fn data_complete<'a>(
                         if let Some(default_value) = default_option {
                             insert_map.insert(key.as_str(), default_value.as_str());
                         }
+                    }else {
+                        insert_map.insert(key.as_str(), const_property::NULL_STR);
                     }
                 }
             }

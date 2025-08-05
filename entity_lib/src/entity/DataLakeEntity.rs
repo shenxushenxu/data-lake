@@ -94,20 +94,32 @@ impl <'a> SlaveBatchData<'a>{
     }
 
     pub fn get_map(&self) -> Vec<HashMap<&'a str, &'a str>> {
-        let mut vec = Vec::<HashMap<&'a str, &'a str>>::new();
-        let size = self.column.len();
-        for x_index in 0..self.data.len() {
-            let mut map = HashMap::<&'a str, &'a str>::new();
-            let line_data = &self.data[x_index];
-            for index in 0..size {
-                let column_name = &self.column[index];
-                let value = &line_data[index];
-                map.insert(*column_name, *value);
-            }
-            vec.push(map);
-        }
 
+        let vec = self.data
+            .iter()
+            .map(|row| {
+                self.column
+                    .iter()
+                    .zip(row.iter())
+                    .map(|(&col, &val)| (col, val))
+                    .collect()
+            }).collect();
+        
         return vec;
+    }
+
+    pub fn get_line_map(&self, index:usize) -> HashMap<&'a str, &'a str> {
+
+        let vec_data = &self.data[index];
+
+        let hash_map = self.column.iter().zip(vec_data.iter()).map(|(&col, &val)| (col, val)).collect();
+        
+        return hash_map;
+    }
+    
+    
+    pub fn get_data_size(&self) -> usize {
+        return self.data.len();
     }
     
 }

@@ -276,14 +276,16 @@ fn data_interface() -> JoinHandle<()> {
                                     let message_bytes = decoder
                                         .decompress_vec(&batch_data)
                                         .unwrap_or_else(|e| panic!("解压失败: {}", e));
+
                                     
-                                    
+
                                     let arc_uuid_clone = Arc::clone(&uuid_arc);
                                     let batch_return = controls::batch_insert::batch_insert_data(
                                         message_bytes,
                                         arc_uuid_clone,
                                     ).await;
 
+                                    
                                     match batch_return {
                                         Ok(_) => {
                                             write.write_i32(-1).await.unwrap();

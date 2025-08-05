@@ -7,7 +7,7 @@ use snap::raw::{Decoder, Encoder};
 use tokio::fs::OpenOptions;
 use entity_lib::entity::const_property::INDEX_SIZE;
 use public_function::read_function::ArrayBytesReader;
-
+use rayon::prelude::*;
 
 #[tokio::test]
 pub async fn eeee() {
@@ -46,25 +46,15 @@ pub async fn stream_read(streamreadstruct: &StreamReadStruct) -> Result<Option<V
                             return Err(e);
                         }
                     };
-                    let mess = arraybytesreader.read_exact(mess_len as usize);
-                
+                    let bytes = arraybytesreader.read_exact(mess_len as usize);
                     let mut decoder = Decoder::new();
-                    let message_bytes = match decoder.decompress_vec(mess){
-                        Ok(bytes) => {
-                            bytes
-                        }
-                        Err(e) => {
-                            for box_leak in box_bytes_vec {
-                                unsafe {Box::from_raw(box_leak)};
-                            }
-                            return Err(DataLakeError::custom(format!("解压报错: {:?}", e)));
-                        }
-                    };
-                    
+                    let message_bytes = decoder
+                        .decompress_vec(&bytes)
+                        .unwrap_or_else(|e| panic!("解压失败: {}", e));
                     let box_bytes = Box::leak(Box::new(message_bytes));
                     
                     let mut datastructure = {
-                        let prt_bytes = box_bytes as * mut Vec<u8>;
+                        let prt_bytes = box_bytes as *mut Vec<u8>;
                         
                         let bytes = unsafe{&*prt_bytes};
                         
@@ -81,20 +71,19 @@ pub async fn stream_read(streamreadstruct: &StreamReadStruct) -> Result<Option<V
                             }
                         }
                     };
-
                     box_bytes_vec.push(box_bytes);
-                    
-                    
-                    
-                    let data = &mut datastructure.data;
-                    let major_value = datastructure.major_value;
-                    
-                    // 补全\验证  数据
-                    data_complete(col_type, data, major_value).await;
-                    
-                    
+
                     vec_datastructure.push(datastructure);
                 }
+                
+                vec_datastructure.par_iter_mut().for_each(|datastructure| {
+                    let data = &mut datastructure.data;
+                    let major_value = datastructure.major_value;
+                    // 补全\验证  数据
+                    data_complete(col_type, data, major_value); 
+                });
+                
+                
                 
                 let vec_mess = match bincode::serialize(&vec_datastructure){
                     Ok(vec_string) => {
