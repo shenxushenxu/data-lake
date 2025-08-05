@@ -94,12 +94,10 @@ fn data_read_write() -> JoinHandle<()> {
 
                             read.read_exact(&mut message).await.unwrap();
 
-                            let start = Instant::now();
 
                             let slave_message =
                                 bincode::deserialize::<SlaveMessage>(&message).unwrap();
 
-                            println!("bincode::deserialize: {:?}", start.elapsed());
 
                             match slave_message {
                                 SlaveMessage::create(create_message) => {
@@ -177,12 +175,11 @@ fn data_read_write() -> JoinHandle<()> {
                                     }
                                 }
                                 SlaveMessage::batch_insert(slave_insert) => {
-                                    let start = Instant::now();
 
                                     let batch_return =
                                         controls::batch_insert::batch_insert_data(slave_insert)
                                             .await;
-                                    println!("batch_insert_data 总时间: {:?}", start.elapsed());
+
                                     match batch_return {
                                         Ok(_) => {
                                             write.write_i32(-1).await.unwrap();

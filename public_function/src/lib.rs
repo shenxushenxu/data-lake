@@ -294,18 +294,15 @@ pub fn data_complete<'a>(
                 }else {
                     insert_map.insert(key.as_str(), const_property::NULL_STR);
                 }
-                
             }
             Some(data_value) => {
-                if data_value.is_empty() {
+                if *data_value == const_property::NULL_STR {
                     let column_configh_judgment = &value.1;
                     if let ColumnConfigJudgment::DEFAULT = column_configh_judgment {
                         let default_option = &value.2;
                         if let Some(default_value) = default_option {
                             insert_map.insert(key.as_str(), default_value.as_str());
                         }
-                    }else {
-                        insert_map.insert(key.as_str(), const_property::NULL_STR);
                     }
                 }
             }

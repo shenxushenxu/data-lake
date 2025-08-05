@@ -17,6 +17,7 @@ use snap::raw::Encoder;
 use tokio::fs::OpenOptions;
 use tokio::io::AsyncWriteExt;
 use tokio::sync::Mutex;
+use entity_lib::entity::const_property;
 
 pub async fn batch_insert_data<'a>(batch_insert: SlaveInsert<'a>) -> Result<(), DataLakeError> {
     match insert_operation(&batch_insert).await {
@@ -51,7 +52,6 @@ pub async fn insert_operation<'a>(
     
     let batch_insert_data_size = batch_data.get_data_size();
 
-    let start = Instant::now();
 
     // 定义 offset 变量
     let mut offset_init = get_offset(None, &file_key).await?;
@@ -116,14 +116,7 @@ pub async fn insert_operation<'a>(
             offset_init = offset_init + 1;
             start_seek = end_seek;
     }
-    
 
-    println!(
-        "for index in (0..batch_insert_data_size).rev():    {:?}",
-        start.elapsed()
-    );
-
-    let start = Instant::now();
 
     slave_cache_struct
         .data_file
@@ -134,7 +127,6 @@ pub async fn insert_operation<'a>(
         .write_all(index_vec.as_slice())
         .await?;
 
-    println!("写入文件的时长:    {:?}", start.elapsed());
 
     unsafe {
         let dst_ptr = slave_cache_struct.metadata_mmap.as_mut_ptr();
@@ -156,7 +148,6 @@ pub async fn insert_operation<'a>(
 
         return Ok(Some(file_key.clone()));
     }
-    println!("unsafe:    {:?}", start.elapsed());
 
     return Ok(None);
 }
@@ -282,10 +273,10 @@ pub fn type_verification(
     for (col_name, value) in insert_data.iter() {
         match metadata_col_type.get(*col_name) {
             Some((data_type, column_conf_judg, _)) => {
-                // 验证类型是否匹配
-                verification_type(*col_name, *value, data_type)?;
                 //验证属性配置是否匹配
                 conf_verification(*col_name, *value, column_conf_judg)?;
+                // 验证类型是否匹配
+                verification_type(*col_name, *value, data_type)?;
             }
             None => {
                 if *col_name != CRUD_TYPE {
@@ -308,13 +299,13 @@ fn conf_verification(
 ) -> Result<(), DataLakeError> {
     match column_conf_judg {
         ColumnConfigJudgment::PRIMARY_KEY => {
-            if col_value.trim().is_empty() {
-                return Err(DataLakeError::custom(format!("{} 列为 空", col_name)));
+            if col_value == const_property::NULL_STR {
+                return Err(DataLakeError::custom(format!("{} 为主键 不允许为空", col_name)));
             }
         }
         ColumnConfigJudgment::NOT_NULL => {
-            if col_value.trim().is_empty() {
-                return Err(DataLakeError::custom(format!("{} 列为 空", col_name)));
+            if col_value == const_property::NULL_STR {
+                return Err(DataLakeError::custom(format!("{} 不允许为空", col_name)));
             }
         }
         _ => {}
@@ -330,53 +321,55 @@ fn verification_type(
     col_value: &str,
     data_type: &DataType,
 ) -> Result<(), DataLakeError> {
-    match data_type {
-        DataType::string => {
-            col_value.to_string();
-        }
-        DataType::int => match col_value.parse::<i32>() {
-            Ok(_) => {}
-            Err(e) => {
+    
+    if col_value != const_property::NULL_STR {
+        match data_type {
+            DataType::string => {
+                col_value.to_string();
+            }
+            DataType::int => match col_value.parse::<i32>() {
+                Ok(_) => {}
+                Err(e) => {
+                    return Err(DataLakeError::custom(format!(
+                        "{} 列转换为 int 失败，检查插入的数据: {}",
+                        col_name, col_value
+                    )));
+                }
+            },
+            DataType::float => match col_value.parse::<f32>() {
+                Ok(_) => {}
+                Err(_) => {
+                    return Err(DataLakeError::custom(format!(
+                        "{} 列转换为 float 失败，检查插入的数据: {}",
+                        col_name, col_value
+                    )));
+                }
+            },
+            DataType::boolean => match col_value.parse::<bool>() {
+                Ok(_) => {}
+                Err(_) => {
+                    return Err(DataLakeError::custom(format!(
+                        "{} 列转换为 bool 失败，检查插入的数据: {}",
+                        col_name, col_value
+                    )));
+                }
+            },
+            DataType::long => match col_value.parse::<i64>() {
+                Ok(_) => {}
+                Err(_) => {
+                    return Err(DataLakeError::custom(format!(
+                        "{} 列转换为 long 失败，检查插入的数据: {}",
+                        col_name, col_value
+                    )));
+                }
+            },
+            _ => {
                 return Err(DataLakeError::custom(format!(
-                    "{} 列转换为 int 失败，检查插入的数据: {}",
-                    col_name, col_value
+                    "{}  不符合任何数据类型",
+                    col_name
                 )));
             }
-        },
-        DataType::float => match col_value.parse::<f32>() {
-            Ok(_) => {}
-            Err(_) => {
-                return Err(DataLakeError::custom(format!(
-                    "{} 列转换为 float 失败，检查插入的数据: {}",
-                    col_name, col_value
-                )));
-            }
-        },
-        DataType::boolean => match col_value.parse::<bool>() {
-            Ok(_) => {}
-            Err(_) => {
-                return Err(DataLakeError::custom(format!(
-                    "{} 列转换为 bool 失败，检查插入的数据: {}",
-                    col_name, col_value
-                )));
-            }
-        },
-        DataType::long => match col_value.parse::<i64>() {
-            Ok(_) => {}
-            Err(_) => {
-                return Err(DataLakeError::custom(format!(
-                    "{} 列转换为 long 失败，检查插入的数据: {}",
-                    col_name, col_value
-                )));
-            }
-        },
-        _ => {
-            return Err(DataLakeError::custom(format!(
-                "{}  不符合任何数据类型",
-                col_name
-            )));
         }
     }
-
     return Ok(());
 }

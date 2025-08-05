@@ -100,7 +100,6 @@ pub async fn batch_insert_data<'a>(
                 }
             }
             
-            let start = Instant::now();
             
             let mut join_handle_set = tokio::task::JoinSet::new();
             for (partition_code, slave_batch_data) in res_map {
@@ -115,7 +114,6 @@ pub async fn batch_insert_data<'a>(
                 let insert_tcpstream_cache_pool = Arc::clone(&INSERT_TCPSTREAM_CACHE_POOL);
                 join_handle_set.spawn(async move {
 
-                    let start = Instant::now();
 
 
                     let mut partition_address = table_structure_clone.partition_address.clone();
@@ -162,9 +160,7 @@ pub async fn batch_insert_data<'a>(
 
                     stream.write_i32(bytes_len).await?;
                     stream.write_all(&bytes).await?;
-                    println!("bincode::serialize  {:?}", start.elapsed());
 
-                    let start = Instant::now();
                     let bytes_len = stream.read_i32().await?;
                 
                     if bytes_len == -2 {
@@ -175,7 +171,6 @@ pub async fn batch_insert_data<'a>(
                         let message_str = String::from_utf8(message)?;
                         return Err(DataLakeError::custom(message_str));
                     }
-                    println!("stream.read_i32()  {:?}", start.elapsed());
 
 
                     return Ok(());
@@ -208,10 +203,7 @@ pub async fn batch_insert_data<'a>(
                 Box::from_raw(batch_data_leak);
             }
 
-            println!("join_handle_set: {:?}", start.elapsed());
-
-
-
+            
             return Ok(());
             
             
