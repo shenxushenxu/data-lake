@@ -48,13 +48,13 @@ pub async fn insert_operation<'a>(
     let mutex_slave_cache_struct = get_cache_file_object(&file_key).await?;
 
     let mut slave_cache_struct = mutex_slave_cache_struct.lock().await;
-
     
     let batch_insert_data_size = batch_data.get_data_size();
-
-
+    
     // 定义 offset 变量
     let mut offset_init = get_offset(None, &file_key).await?;
+    
+    let batch_index = batch_insert_data_size - 1;
     
     let mut vec_data_structure = (0..batch_insert_data_size)
         .collect::<Vec<usize>>()
@@ -64,8 +64,8 @@ pub async fn insert_operation<'a>(
             batch_format_matching(&insert_single, table_structure)?;
             let major_value = insert_single.remove(major_key).unwrap();
             let crud_type = insert_single.remove(CRUD_TYPE).unwrap();
-
-            let offset = offset_init + (index as i64);
+            
+            let offset = offset_init + (( batch_index - index) as i64);
             
             let data = DataStructure {
                 table_name: table_name,
@@ -82,12 +82,11 @@ pub async fn insert_operation<'a>(
             let compressed_data = encoder.compress_vec(&vec_mess)?;
             
 
-            Ok((index as i32, compressed_data))
-        })
-        .collect::<Result<Vec<(i32, Vec<u8>)>, DataLakeError>>()?;
+            Ok((offset, compressed_data))
+        }).collect::<Result<Vec<(i64, Vec<u8>)>, DataLakeError>>()?;
 
 
-    vec_data_structure.sort_by_key(|x| -x.0);
+    vec_data_structure.sort_by_key(|x| x.0);
 
     
     let mut start_seek = slave_cache_struct.data_file.metadata().await?.len();
