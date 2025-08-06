@@ -8,6 +8,7 @@ use std::io::SeekFrom;
 use tokio::fs::OpenOptions;
 use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 use uuid::Uuid;
+use entity_lib::entity::const_property::I32_BYTE_LEN;
 use public_function::read_function::get_slave_path;
 
 pub async fn compress_table(table_name: &String, uuid: &String) -> Result<(), DataLakeError> {
@@ -87,22 +88,24 @@ pub async fn compress_table(table_name: &String, uuid: &String) -> Result<(), Da
         let slave_config = SLAVE_CONFIG.lock().await;
         slave_config.slave_file_segment_bytes as u64
     };
-    
 
+    let mut encoder = Encoder::new();
+    let mut start_seek:u64 = 0;
+    
     for (_, (position, len)) in res_map.into_iter() {
         let data_bytes = &temp_mmap[position..(position + len)];
         let mut value = bincode::deserialize::<DataStructure>(&data_bytes)?;
 
         value.offset = offset;
         let bincode_value = bincode::serialize(&value)?;
+        let compressed_data = encoder.compress_vec(&bincode_value)?;
 
-        let data_len = bincode_value.len() as i32;
+        let data_len = compressed_data.len() as i32;
 
-        let start_seek = compress_file.seek(SeekFrom::End(0)).await?;
 
         compress_file.write_i32(data_len).await?;
-        compress_file.write_all(&bincode_value).await?;
-        let end_seek = compress_file.seek(SeekFrom::End(0)).await?;
+        compress_file.write_all(&compressed_data).await?;
+        let end_seek = start_seek + (I32_BYTE_LEN as u64) + (data_len as u64);
 
         let index_struct = IndexStruct {
             offset: offset,
@@ -114,6 +117,7 @@ pub async fn compress_table(table_name: &String, uuid: &String) -> Result<(), Da
         index_file.write_all(&offset_struct).await?;
 
         offset += 1;
+        start_seek = end_seek;
 
         if end_seek > file_max_capacity {
 
@@ -136,9 +140,14 @@ pub async fn compress_table(table_name: &String, uuid: &String) -> Result<(), Da
                 .await?;
 
             tmpfile_offsetCode.insert(tmp_file_name.clone(), offset);
+            start_seek = 0;
         }
     }
 
+    compress_file.flush().await?;
+    index_file.flush().await?;
+    
+    
     // 删除原本的无用文件
     for file_key in file_vec.iter() {
         let file_path = &file_key.1;

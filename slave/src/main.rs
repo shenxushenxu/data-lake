@@ -37,7 +37,7 @@ async fn main() {
 
         let slave_node = map.get("slave.node").unwrap().clone();
         let slave_data = map.get("slave.data").unwrap().clone();
-        let slave_file_segment_bytes = map.get("slave.file.segment.bytes").unwrap().clone();
+        let slave_file_segment_bytes = map.get("slave.file.segment.mb").unwrap().clone();
         let slave_replicas_sync_num = map.get("slave.replicas.sync.num").unwrap().clone();
         let slave_data_vec = slave_data
             .split(",")

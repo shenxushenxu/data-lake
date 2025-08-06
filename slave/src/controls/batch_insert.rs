@@ -55,6 +55,8 @@ pub async fn insert_operation<'a>(
     let mut offset_init = get_offset(None, &file_key).await?;
     
     let batch_index = batch_insert_data_size - 1;
+
+    
     
     let mut vec_data_structure = (0..batch_insert_data_size)
         .collect::<Vec<usize>>()
@@ -77,7 +79,6 @@ pub async fn insert_operation<'a>(
             };
 
             let vec_mess = bincode::serialize(&data)?;
-
             let mut encoder = Encoder::new();
             let compressed_data = encoder.compress_vec(&vec_mess)?;
             

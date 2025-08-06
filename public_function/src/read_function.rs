@@ -43,6 +43,8 @@ pub async fn data_duplicate_removal(file_vec: Vec<String>, uuid:&String) -> Resu
         .open(format!("{}/{}",&temp_path, uuid))
         .await?;
 
+    let mut decoder = Decoder::new();
+    
     for file_path in file_vec.iter() {
         let mut file = OpenOptions::new().read(true).open(file_path).await?;
 
@@ -53,7 +55,6 @@ pub async fn data_duplicate_removal(file_vec: Vec<String>, uuid:&String) -> Resu
 
                     file.read_exact(&mut message).await?;
                     
-                    let mut decoder = Decoder::new();
                     let message_bytes = decoder
                         .decompress_vec(&message)?;
 

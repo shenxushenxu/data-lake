@@ -1,3 +1,4 @@
+use crate::controls::stream_read;
 use crate::controls::stream_read::binary_search;
 use entity_lib::entity::Error::DataLakeError;
 use entity_lib::entity::SlaveEntity::{
@@ -46,8 +47,7 @@ pub async fn follower_replicas_sync(
     tcp_stream.write_all(mess_bytes.as_slice()).await?;
 
     let return_mess_len = tcp_stream.read_i32().await?;
-    if return_mess_len != -1 && return_mess_len != -2{
-        
+    if return_mess_len != -1 && return_mess_len != -2 {
         let mut return_mess_bytes = vec![0u8; return_mess_len as usize];
         tcp_stream
             .read_exact(return_mess_bytes.as_mut_slice())
@@ -139,59 +139,32 @@ pub async fn Leader_replicas_sync(
 
     let option_this_offset_file = binary_search(&file_vec, offset).await?;
 
-    if let Some(this_offset_file) = option_this_offset_file {
-        if let Some(replicase_sync_data) = find_data(this_offset_file, offset).await? {
-            return Ok(Some(replicase_sync_data));
-        }
+    if let Some((index_name, this_offset_file)) = option_this_offset_file {
+        let slave_replicas_sync_num = {
+            let slave_config = SLAVE_CONFIG.lock().await;
+            let slave_replicas_sync_num = slave_config.slave_replicas_sync_num;
+            slave_replicas_sync_num
+        };
+
+        let (index_path, _, _, start_seek) =
+            stream_read::find_data(index_name, this_offset_file, offset, slave_replicas_sync_num)
+                .await?;
+        
+        let replicasesyncdata = load_data(index_path, start_seek, slave_replicas_sync_num).await?;
+        return Ok(Some(replicasesyncdata));
     }
 
     return Ok(None);
 }
 
-async fn find_data(index_path: &String, offset: i64) -> Result<Option<ReplicaseSyncData>, DataLakeError> {
-    let mut index_file = OpenOptions::new()
-        .read(true)
-        .open(index_path)
-        .await?;
+async fn load_data(
+    index_path: &String,
+    start_seek: usize,
+    slave_replicas_sync_num: usize,
+) -> Result<ReplicaseSyncData, DataLakeError> {
+    let index_file = OpenOptions::new().read(true).open(index_path).await?;
 
     let index_mmap = unsafe { Mmap::map(&index_file)? };
-
-    let index_file_len = index_mmap.len();
-    let mut left = 0;
-    let mut right = (index_file_len / INDEX_SIZE - 1);
-
-    let mut start_index: Option<IndexStruct> = None;
-    let mut start_seek: usize = 0;
-    while left <= right {
-        let mid = left + (right - left) / 2;
-        start_seek = mid * INDEX_SIZE;
-        let bytes_mid = &index_mmap[start_seek..start_seek + INDEX_SIZE];
-        let data_mid = bincode::deserialize::<IndexStruct>(bytes_mid)?;
-
-        if data_mid.offset == offset {
-            start_index = Some(data_mid);
-            break;
-        } else if data_mid.offset < offset {
-            left = (mid + 1);
-        } else {
-            right = (mid - 1);
-        }
-    }
-
-    if start_index.is_none() {
-        return Ok(None);
-    }
-
-
-
-
-    let slave_replicas_sync_num = {
-        let slave_config = SLAVE_CONFIG.lock().await;
-        let slave_replicas_sync_num = slave_config.slave_replicas_sync_num;
-        slave_replicas_sync_num
-    };
-
-
     let mut index_end_seek = start_seek + (INDEX_SIZE * slave_replicas_sync_num);
     let index_len = index_mmap.len();
 
@@ -199,11 +172,8 @@ async fn find_data(index_path: &String, offset: i64) -> Result<Option<ReplicaseS
         index_end_seek = index_len;
     }
 
-
     // 获得索引
     let offset_set = &index_mmap[start_seek..index_end_seek];
-
-
 
     // 获得 数据
     let data_start_seek = {
@@ -222,7 +192,7 @@ async fn find_data(index_path: &String, offset: i64) -> Result<Option<ReplicaseS
         .read(true)
         .open(index_path.replace(".index", ".snappy"))
         .await?;
-    let snappy_file_mmap = unsafe { Mmap::map(&snappy_file)?};
+    let snappy_file_mmap = unsafe { Mmap::map(&snappy_file)? };
 
     let data_set = &snappy_file_mmap[data_start_seek..data_end_seek];
 
@@ -237,5 +207,5 @@ async fn find_data(index_path: &String, offset: i64) -> Result<Option<ReplicaseS
         index_code: index_code,
     };
 
-    return Ok(Some(replicase_sync_data));
+    Ok(replicase_sync_data)
 }
