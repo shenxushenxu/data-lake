@@ -87,13 +87,13 @@ pub struct Insert {
 }
 
 
-#[derive(Serialize,Deserialize, Debug, Clone)]
-pub struct SlaveInsert<'a > {
-    pub table_name: &'a str,
-    pub data: SlaveBatchData<'a>,
-    pub partition_code: i32,
-    pub table_structure: TableStructure
-}
+// #[derive(Serialize,Deserialize, Debug, Clone)]
+// pub struct SlaveInsert<'a > {
+//     pub table_name: &'a str,
+//     pub data: SlaveBatchData<'a>,
+//     pub partition_code: i32,
+// }
+
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct BatchInsertTruth {

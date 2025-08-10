@@ -35,5 +35,8 @@ pub const METADATA_LOG:&str = "metadata.log";
 // i32 的字节长度
 pub const I32_BYTE_LEN:usize = mem::size_of::<i32>();
 
+// i64 的字节长度
+pub const I64_BYTE_LEN:usize = mem::size_of::<i64>();
+
 // 表示为 空的字符串
 pub const NULL_STR: &str = "/~|";

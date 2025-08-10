@@ -4,7 +4,7 @@ use entity_lib::entity::Error::DataLakeError;
 use entity_lib::entity::SlaveEntity::SlaveMessage;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
-use public_function::BufferObject::STREAM_TCP_TABLESTRUCTURE;
+use entity_lib::function::BufferObject::STREAM_TCP_TABLESTRUCTURE;
 
 pub async fn drop_table_operation(table_name: &String) -> Result<(), DataLakeError> {
     let tablestructure = get_metadata(table_name).await?;

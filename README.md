@@ -99,9 +99,13 @@ cargo run --release -- masterip:masterprot
 ## 删除列
 <br>{"sql":"ALTER TABLE table_name OROP username_a"}
 ## 查看表的元数据
-<br> {"sql":"show table_name"}
+<br> {"sql":"desc table_name"}
+
 ## 查看表内每个分区的最大offset
 <br> {"sql":"max_offset table_name"}
+
+## 查看所有表
+<br> {"sql":"show_table"}
 
 ## 消费表内的数据：
 ### 从头开始消费：

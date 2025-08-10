@@ -11,8 +11,6 @@ use entity_lib::entity::DaqlEntity::DaqlType::COMPRESS_TABLE;
 use entity_lib::entity::Error::DataLakeError;
 use entity_lib::entity::MasterEntity::Insert;
 use entity_lib::entity::SlaveEntity::{DataStructure, IndexStruct, SlaveCacheStruct};
-use public_function::read_function::get_slave_path;
-use public_function::SLAVE_CONFIG;
 
 // pub async fn insert_operation(insert: Insert) -> Result<(), DataLakeError>{
 // 

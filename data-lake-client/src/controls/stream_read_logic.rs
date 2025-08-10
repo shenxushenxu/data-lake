@@ -4,8 +4,8 @@ use serde::{Deserialize, Serialize};
 use snap::raw::Decoder;
 use std::collections::HashMap;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::net::{TcpSocket, TcpStream};
-use entity_lib::entity::MasterEntity::Statement::batch_insert;
+use tokio::net::{TcpStream};
+use entity_lib::entity::bytes_reader::ArrayBytesReader;
 
 #[derive(Serialize, Deserialize, Debug)]
 struct StreamRead {
@@ -105,8 +105,55 @@ impl<'a> Consumer<'a> {
                     .decompress_vec(&mess)
                     .unwrap_or_else(|e| panic!("解压失败: {}", e));
 
-                let data_structure_vec =
-                    bincode::deserialize::<Vec<DataStructure>>(&message_bytes).unwrap();
+                let data_structure_vec = {
+                    let mut arraybytesreader = ArrayBytesReader::new(message_bytes.as_slice());
+                    let vec_len = arraybytesreader.read_usize();
+                    let mut vec = Vec::<DataStructure>::with_capacity(vec_len);
+
+                    for _ in 0..vec_len {
+                        // table_name
+                        let table_name_len = arraybytesreader.read_usize();
+                        let table_name = arraybytesreader.read_str(table_name_len);
+
+                        //major_value
+                        let major_value_len = arraybytesreader.read_usize();
+                        let major_value = arraybytesreader.read_str(major_value_len);
+
+                        // data
+                        let data_len = arraybytesreader.read_usize();
+                        let mut data = HashMap::<&str, &str>::with_capacity(data_len);
+                        for _ in 0..data_len {
+                            let key_len = arraybytesreader.read_usize();
+                            let key = arraybytesreader.read_str(key_len);
+
+                            let value_len = arraybytesreader.read_usize();
+                            let value = arraybytesreader.read_str(value_len);
+                            data.insert(key, value);
+                        }
+
+                        // _crud_type
+                        let crud_type_len = arraybytesreader.read_usize();
+                        let crud_type = arraybytesreader.read_str(crud_type_len);
+
+                        //partition_code
+                        let partition_code = arraybytesreader.read_i32();
+
+                        //offset
+                        let offset = arraybytesreader.read_i64();
+
+                        let data_structure =  DataStructure{
+                            table_name: table_name,
+                            major_value: major_value,
+                            data: data,
+                            _crud_type: crud_type,
+                            partition_code: partition_code,
+                            offset: offset
+                        };
+
+                        vec.push(data_structure);
+                    }
+                    vec
+                };
 
                 for data_structure in data_structure_vec.iter() {
                     let offset = data_structure.offset;

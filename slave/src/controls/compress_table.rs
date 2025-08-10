@@ -1,15 +1,14 @@
 use entity_lib::entity::Error::DataLakeError;
 use entity_lib::entity::SlaveEntity::{DataStructure, IndexStruct};
 use memmap2::Mmap;
-use public_function::SLAVE_CONFIG;
-use snap::raw::{Decoder, Encoder};
+use snap::raw::Encoder;
 use std::collections::HashMap;
-use std::io::SeekFrom;
 use tokio::fs::OpenOptions;
-use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
+use tokio::io::AsyncWriteExt;
 use uuid::Uuid;
 use entity_lib::entity::const_property::I32_BYTE_LEN;
-use public_function::read_function::get_slave_path;
+use entity_lib::function::{get_list_filename, SLAVE_CONFIG};
+use entity_lib::function::read_function::get_slave_path;
 
 pub async fn compress_table(table_name: &String, uuid: &String) -> Result<(), DataLakeError> {
     
@@ -17,7 +16,7 @@ pub async fn compress_table(table_name: &String, uuid: &String) -> Result<(), Da
     let data_path = get_slave_path(table_name).await?;
     let compress_path = format!("{}/compress", data_path);
 
-    let mut log_files = public_function::get_list_filename(&table_name).await;
+    let mut log_files = get_list_filename(&table_name).await;
   
 
     let mut file_vec = log_files
@@ -60,7 +59,7 @@ pub async fn compress_table(table_name: &String, uuid: &String) -> Result<(), Da
         .map(|x2| x2.1.clone())
         .collect::<Vec<String>>();
     
-    let (res_map, temp_file) = public_function::read_function::data_duplicate_removal(f_v, uuid).await?;
+    let (res_map, temp_file) = entity_lib::function::read_function::data_duplicate_removal(f_v, uuid).await?;
 
     
     let temp_mmap = unsafe { Mmap::map(&temp_file) }?;
@@ -94,19 +93,19 @@ pub async fn compress_table(table_name: &String, uuid: &String) -> Result<(), Da
     
     for (_, (position, len)) in res_map.into_iter() {
         let data_bytes = &temp_mmap[position..(position + len)];
-        let mut value = bincode::deserialize::<DataStructure>(&data_bytes)?;
+        let mut value = DataStructure::deserialize(data_bytes);
 
         value.offset = offset;
-        let bincode_value = bincode::serialize(&value)?;
-        let compressed_data = encoder.compress_vec(&bincode_value)?;
+        let value_serialize = value.serialize()?;
+        let compressed_data = encoder.compress_vec(&value_serialize)?;
 
         let data_len = compressed_data.len() as i32;
+        let data_len_bytes = &data_len.to_le_bytes();
 
-
-        compress_file.write_i32(data_len).await?;
+        compress_file.write_all(data_len_bytes).await?;
         compress_file.write_all(&compressed_data).await?;
+        
         let end_seek = start_seek + (I32_BYTE_LEN as u64) + (data_len as u64);
-
         let index_struct = IndexStruct {
             offset: offset,
             start_seek: start_seek,

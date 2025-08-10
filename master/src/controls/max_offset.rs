@@ -1,11 +1,8 @@
 use crate::controls::metadata::get_metadata;
 use entity_lib::entity::Error::DataLakeError;
-use public_function::PosttingTcpStream::DataLakeTcpStream;
 use std::collections::HashMap;
 use entity_lib::entity::SlaveEntity::SlaveMessage;
-
-
-
+use entity_lib::function::PosttingTcpStream::DataLakeTcpStream;
 
 pub async fn get_max_offset(table_name: &String) -> Result<HashMap<usize, i64>, DataLakeError> {
     let mut table_structure = get_metadata(table_name).await?;

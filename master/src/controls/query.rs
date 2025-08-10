@@ -6,7 +6,6 @@ use std::sync::Arc;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use entity_lib::entity::MasterEntity::{Info, PartitionInfo};
-use public_function::data_complete;
 
 pub async fn query_daql(query_message: QueryMessage) -> Result<Option<Vec<String>>, DataLakeError> {
     // let table_name = &query_message.tablename;

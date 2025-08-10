@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use entity_lib::entity::Error::DataLakeError;
-use public_function::BufferObject::FILE_CACHE_POOL;
-use public_function::read_function::get_slave_path;
+use entity_lib::function::BufferObject::FILE_CACHE_POOL;
+use entity_lib::function::read_function::get_slave_path;
 
 pub async fn drop_table_operation(table_name: &String) -> Result<(), DataLakeError>{
     let data_path = get_slave_path(table_name).await?;

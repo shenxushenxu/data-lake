@@ -1,12 +1,11 @@
 use std::sync::Arc;
 use crate::controls::metadata::{get_metadata, get_table_path};
 use entity_lib::entity::Error::DataLakeError;
-use public_function::MASTER_CONFIG;
 use tokio::fs::{File};
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
 use entity_lib::entity::MasterEntity::{ColumnConfigJudgment, DataType, TableStructure};
-use public_function::BufferObject::STREAM_TCP_TABLESTRUCTURE;
+use entity_lib::function::BufferObject::STREAM_TCP_TABLESTRUCTURE;
 
 pub async fn alter_orop(alteradd: (String, String)) -> Result<(), DataLakeError> {
     let table_name = alteradd.0;

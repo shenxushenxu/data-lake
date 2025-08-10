@@ -1,26 +1,30 @@
+use ahash::AHashMap;
 use entity_lib::entity::Error::DataLakeError;
-use entity_lib::entity::MasterEntity::{
-    ColumnConfigJudgment, DataType, SlaveInsert, TableStructure,
-};
+use entity_lib::entity::MasterEntity::{ColumnConfigJudgment, DataType, TableStructure};
 use entity_lib::entity::SlaveEntity::{DataStructure, IndexStruct, SlaveCacheStruct};
-use entity_lib::entity::const_property::{CRUD_TYPE, DATA_FILE_EXTENSION, I32_BYTE_LEN, INDEX_FILE_EXTENSION, INDEX_SIZE, LOG_FILE, METADATA_LOG};
+use entity_lib::entity::const_property;
+use entity_lib::entity::const_property::{
+    CRUD_TYPE, DATA_FILE_EXTENSION, I32_BYTE_LEN, INDEX_FILE_EXTENSION, INDEX_SIZE, LOG_FILE,
+    METADATA_LOG,
+};
+use entity_lib::function::BufferObject::FILE_CACHE_POOL;
+use entity_lib::function::SLAVE_CONFIG;
+use entity_lib::function::read_function::get_slave_path;
+use entity_lib::function::vec_trait::VecPutVec;
 use memmap2::MmapMut;
-use public_function::BufferObject::FILE_CACHE_POOL;
-use public_function::SLAVE_CONFIG;
-use public_function::read_function::get_slave_path;
-use public_function::vec_trait::VecPutVec;
 use rayon::prelude::*;
+use snap::raw::Encoder;
 use std::collections::HashMap;
+use std::io::Write;
 use std::sync::Arc;
 use std::time::Instant;
-use snap::raw::Encoder;
 use tokio::fs::OpenOptions;
 use tokio::io::AsyncWriteExt;
 use tokio::sync::Mutex;
-use entity_lib::entity::const_property;
+use entity_lib::entity::DataLakeEntity::SlaveInsert;
 
-pub async fn batch_insert_data<'a>(batch_insert: SlaveInsert<'a>) -> Result<(), DataLakeError> {
-    match insert_operation(&batch_insert).await {
+pub async fn batch_insert_data<'a>(batch_insert: SlaveInsert<'a>, table_structure: &TableStructure) -> Result<(), DataLakeError> {
+    match insert_operation(&batch_insert, table_structure).await {
         Ok(is) => {
             if let Some(file_key) = is {
                 let file_cache_pool = Arc::clone(&FILE_CACHE_POOL);
@@ -36,39 +40,39 @@ pub async fn batch_insert_data<'a>(batch_insert: SlaveInsert<'a>) -> Result<(), 
 
 pub async fn insert_operation<'a>(
     batch_insert: &SlaveInsert<'a>,
+    table_structure: &TableStructure,
 ) -> Result<Option<String>, DataLakeError> {
     let table_name = &batch_insert.table_name;
     let partition_code = batch_insert.partition_code;
     let batch_data = &batch_insert.data;
 
-    let table_structure = &batch_insert.table_structure;
     let major_key = table_structure.major_key.as_str();
     let file_key = format!("{}-{}", table_name, partition_code);
 
     let mutex_slave_cache_struct = get_cache_file_object(&file_key).await?;
 
     let mut slave_cache_struct = mutex_slave_cache_struct.lock().await;
-    
+
     let batch_insert_data_size = batch_data.get_data_size();
-    
+
     // 定义 offset 变量
     let mut offset_init = get_offset(None, &file_key).await?;
-    
+
     let batch_index = batch_insert_data_size - 1;
 
-    
-    
+
     let mut vec_data_structure = (0..batch_insert_data_size)
         .collect::<Vec<usize>>()
         .into_par_iter()
         .map(|index| {
             let mut insert_single = batch_data.get_line_map(index);
+
             batch_format_matching(&insert_single, table_structure)?;
             let major_value = insert_single.remove(major_key).unwrap();
             let crud_type = insert_single.remove(CRUD_TYPE).unwrap();
-            
-            let offset = offset_init + (( batch_index - index) as i64);
-            
+
+            let offset = offset_init + ((batch_index - index) as i64);
+
             let data = DataStructure {
                 table_name: table_name,
                 major_value: major_value,
@@ -78,44 +82,60 @@ pub async fn insert_operation<'a>(
                 offset: offset,
             };
 
-            let vec_mess = bincode::serialize(&data)?;
+            let vec_mess = data.serialize()?;
             let mut encoder = Encoder::new();
             let compressed_data = encoder.compress_vec(&vec_mess)?;
-            
 
             Ok((offset, compressed_data))
         }).collect::<Result<Vec<(i64, Vec<u8>)>, DataLakeError>>()?;
 
+    
 
-    vec_data_structure.sort_by_key(|x| x.0);
+    vec_data_structure.sort_unstable_by_key(|x| x.0);
+
+    let start = Instant::now();
 
     
+
+    let mut data_vec_len:usize = 0;
+    vec_data_structure.iter().for_each(|x| {
+        data_vec_len += I32_BYTE_LEN;
+        data_vec_len += x.1.len();
+    });
+
     let mut start_seek = slave_cache_struct.data_file.metadata().await?.len();
-    
-    let mut data_vec = Vec::<u8>::new();
+
+    let mut data_vec = Vec::<u8>::with_capacity(data_vec_len);
     let mut index_vec = Vec::<u8>::with_capacity(vec_data_structure.len() * INDEX_SIZE);
     
     for (_, data_structre_vecu8) in vec_data_structure.iter_mut() {
-            let data_len = data_structre_vecu8.len() as i32;
         
-            data_vec.put_i32_vec(data_len);
-            data_vec.put_vec(data_structre_vecu8);
-        
-            let end_seek = start_seek + (I32_BYTE_LEN as u64) + (data_len as u64) ;
-        
-            let index_struct = IndexStruct {
-                offset: offset_init,
-                start_seek: start_seek,
-                end_seek: end_seek,
-            };
-        
-            let mut index_data = bincode::serialize(&index_struct)?;
-        
-            index_vec.put_vec(&mut index_data);
-        
-            offset_init = offset_init + 1;
-            start_seek = end_seek;
+        let data_len = data_structre_vecu8.len() as i32;
+        let data_len_bytes = &data_len.to_le_bytes();
+
+        data_vec.put_array(data_len_bytes);
+        data_vec.put_vec(data_structre_vecu8);
+
+        let end_seek = start_seek + (I32_BYTE_LEN as u64) + (data_len as u64);
+
+        let index_struct = IndexStruct {
+            offset: offset_init,
+            start_seek: start_seek,
+            end_seek: end_seek,
+        };
+
+        let mut index_data = bincode::serialize(&index_struct)?;
+
+        index_vec.put_vec(&mut index_data);
+
+        offset_init = offset_init + 1;
+        start_seek = end_seek;
     }
+
+
+    println!("for data:  {:?}", start.elapsed());
+
+
 
 
     slave_cache_struct
@@ -126,7 +146,8 @@ pub async fn insert_operation<'a>(
         .index_file
         .write_all(index_vec.as_slice())
         .await?;
-
+    
+    println!("write_all:  {:?}", start.elapsed());
 
     unsafe {
         let dst_ptr = slave_cache_struct.metadata_mmap.as_mut_ptr();
@@ -297,20 +318,11 @@ fn conf_verification(
     col_value: &str,
     column_conf_judg: &ColumnConfigJudgment,
 ) -> Result<(), DataLakeError> {
-    match column_conf_judg {
-        ColumnConfigJudgment::PRIMARY_KEY => {
-            if col_value == const_property::NULL_STR {
-                return Err(DataLakeError::custom(format!("{} 为主键 不允许为空", col_name)));
-            }
+    if let ColumnConfigJudgment::NOT_NULL = column_conf_judg {
+        if col_value == const_property::NULL_STR {
+            return Err(DataLakeError::custom(format!("{} 不允许为空", col_name)));
         }
-        ColumnConfigJudgment::NOT_NULL => {
-            if col_value == const_property::NULL_STR {
-                return Err(DataLakeError::custom(format!("{} 不允许为空", col_name)));
-            }
-        }
-        _ => {}
     }
-
     return Ok(());
 }
 /**
@@ -321,55 +333,52 @@ fn verification_type(
     col_value: &str,
     data_type: &DataType,
 ) -> Result<(), DataLakeError> {
-    
-    if col_value != const_property::NULL_STR {
-        match data_type {
-            DataType::string => {
-                col_value.to_string();
-            }
-            DataType::int => match col_value.parse::<i32>() {
-                Ok(_) => {}
-                Err(e) => {
-                    return Err(DataLakeError::custom(format!(
-                        "{} 列转换为 int 失败，检查插入的数据: {}",
-                        col_name, col_value
-                    )));
-                }
-            },
-            DataType::float => match col_value.parse::<f32>() {
-                Ok(_) => {}
-                Err(_) => {
-                    return Err(DataLakeError::custom(format!(
-                        "{} 列转换为 float 失败，检查插入的数据: {}",
-                        col_name, col_value
-                    )));
-                }
-            },
-            DataType::boolean => match col_value.parse::<bool>() {
-                Ok(_) => {}
-                Err(_) => {
-                    return Err(DataLakeError::custom(format!(
-                        "{} 列转换为 bool 失败，检查插入的数据: {}",
-                        col_name, col_value
-                    )));
-                }
-            },
-            DataType::long => match col_value.parse::<i64>() {
-                Ok(_) => {}
-                Err(_) => {
-                    return Err(DataLakeError::custom(format!(
-                        "{} 列转换为 long 失败，检查插入的数据: {}",
-                        col_name, col_value
-                    )));
-                }
-            },
-            _ => {
+    if col_value == const_property::NULL_STR {
+        return Ok(());
+    }
+    match data_type {
+        DataType::string => {
+            return Ok(());
+        }
+        DataType::int => {
+            if !entity_lib::function::fast_validate::is_valid_i32(col_value) {
                 return Err(DataLakeError::custom(format!(
-                    "{}  不符合任何数据类型",
-                    col_name
+                    "{} 列转换为 int 失败，检查插入的数据: {}",
+                    col_name, col_value
                 )));
             }
         }
+        DataType::float => {
+            if !entity_lib::function::fast_validate::is_valid_f32(col_value) {
+                return Err(DataLakeError::custom(format!(
+                    "{} 列转换为 float 失败，检查插入的数据: {}",
+                    col_name, col_value
+                )));
+            }
+        }
+        DataType::boolean => {
+            if !entity_lib::function::fast_validate::is_valid_bool(col_value) {
+                return Err(DataLakeError::custom(format!(
+                    "{} 列转换为 bool 失败，检查插入的数据: {}",
+                    col_name, col_value
+                )));
+            }
+        }
+        DataType::long => {
+            if !entity_lib::function::fast_validate::is_valid_i64(col_value) {
+                return Err(DataLakeError::custom(format!(
+                    "{} 列转换为 long 失败，检查插入的数据: {}",
+                    col_name, col_value
+                )));
+            }
+        }
+        _ => {
+            return Err(DataLakeError::custom(format!(
+                "{}  不符合任何数据类型",
+                col_name
+            )));
+        }
     }
+
     return Ok(());
 }

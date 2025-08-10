@@ -1,13 +1,14 @@
 use entity_lib::entity::Error::DataLakeError;
 use entity_lib::entity::SlaveEntity::{DataStructure, IndexStruct, StreamReadStruct};
-use entity_lib::entity::const_property::INDEX_SIZE;
+use entity_lib::entity::const_property::{I32_BYTE_LEN, INDEX_SIZE};
 use memmap2::Mmap;
-use public_function::data_complete;
-use public_function::read_function::ArrayBytesReader;
 use rayon::prelude::*;
 use snap::raw::{Decoder, Encoder};
 use std::panic::Location;
+use std::time::Instant;
 use tokio::fs::OpenOptions;
+use entity_lib::entity::bytes_reader::ArrayBytesReader;
+use entity_lib::function::data_complete;
 
 #[tokio::test]
 pub async fn eeee() {}
@@ -27,7 +28,7 @@ pub async fn stream_read(
 
                 let mut arraybytesreader = ArrayBytesReader::new(stream_me.as_slice());
 
-                let mut box_bytes_vec = Vec::<&mut Vec<u8>>::new();
+                let mut box_bytes_vec = Vec::<&'static mut Vec<u8>>::new();
 
                 let mut decoder = Decoder::new();
 
@@ -36,38 +37,19 @@ pub async fn stream_read(
                         break;
                     }
 
-                    let mess_len = match arraybytesreader.read_i32() {
-                        Ok(len) => len,
-                        Err(e) => {
-                            for box_leak in box_bytes_vec {
-                                unsafe { Box::from_raw(box_leak) };
-                            }
-                            return Err(e);
-                        }
-                    };
+                    let mess_len = arraybytesreader.read_i32();
                     let bytes = arraybytesreader.read_exact(mess_len as usize);
 
                     let message_bytes = decoder.decompress_vec(&bytes)?;
 
                     let box_bytes = Box::leak(Box::new(message_bytes));
 
-                    let mut datastructure = {
+                    let datastructure = {
                         let prt_bytes = box_bytes as *mut Vec<u8>;
 
                         let bytes = unsafe { &*prt_bytes };
 
-                        match bincode::deserialize::<DataStructure>(bytes) {
-                            Ok(datastruct) => datastruct,
-                            Err(e) => {
-                                for box_leak in box_bytes_vec {
-                                    unsafe { Box::from_raw(box_leak) };
-                                }
-                                return Err(DataLakeError::BincodeError {
-                                    source: e,
-                                    location: Location::caller(),
-                                });
-                            }
-                        }
+                        DataStructure::deserialize(bytes)
                     };
                     box_bytes_vec.push(box_bytes);
 
@@ -80,8 +62,10 @@ pub async fn stream_read(
                     // 补全\验证  数据
                     data_complete(col_type, data, major_value);
                 });
-
-                let vec_mess = match bincode::serialize(&vec_datastructure) {
+                
+                let start = Instant::now();
+                
+                let vec_mess = match serialize_vec_dataStructure(vec_datastructure){
                     Ok(vec_string) => {
                         for box_leak in box_bytes_vec {
                             unsafe { Box::from_raw(box_leak) };
@@ -90,13 +74,11 @@ pub async fn stream_read(
                         vec_string
                     }
                     Err(e) => {
-                        return Err(DataLakeError::BincodeError {
-                            source: e,
-                            location: Location::caller(),
-                        });
+                        return Err(DataLakeError::custom(format!("slave 序列化失败报错:{:?}", e)));
                     }
                 };
-
+                println!("序列化时间:{:?}", start.elapsed());
+                
                 let mut encoder = Encoder::new();
                 let compressed_data = encoder.compress_vec(&vec_mess)?;
 
@@ -109,6 +91,53 @@ pub async fn stream_read(
     };
 }
 
+
+fn serialize_vec_dataStructure<'a>(vec: Vec<DataStructure<'a>>) -> Result<Vec<u8>, DataLakeError> {
+    let mut data_len = I32_BYTE_LEN;
+    for data_structure in vec.iter() {
+        data_len += data_structure.calculate_serialized_size();
+    }
+    
+    let mut data_vec = Vec::<u8>::with_capacity(data_len);
+    let data_vec_ptr = data_vec.as_mut_ptr();
+    let mut index = 0;
+    
+    unsafe {
+
+        std::ptr::copy_nonoverlapping(
+            (vec.len() as i32).to_le_bytes().as_ptr(),
+            data_vec_ptr.add(index),
+            I32_BYTE_LEN,
+        );
+        index += I32_BYTE_LEN;
+        
+        
+        for data_structure in vec.iter() {
+            let data_structure_bytes = data_structure.serialize()?;
+            let data_structure_bytes_len = data_structure_bytes.len();
+            std::ptr::copy_nonoverlapping(
+                data_structure_bytes.as_ptr(),
+                data_vec_ptr.add(index),
+                data_structure_bytes_len,
+            );
+            
+            index += data_structure_bytes_len;
+        }
+
+        data_vec.set_len(index)
+    }
+    
+    if index == data_len {
+        
+        return Ok(data_vec)
+    }else {
+        return Err(DataLakeError::custom(format!(
+            "serialize_vec_dataStructure  序列化失败  index:{}  data_len:{}",
+            index, data_len
+        )));
+    }
+}
+
 pub async fn data_read(
     streamreadstruct: &StreamReadStruct,
 ) -> Result<Option<Vec<u8>>, DataLakeError> {
@@ -117,7 +146,7 @@ pub async fn data_read(
         &streamreadstruct.table_name, &streamreadstruct.partition_code
     );
 
-    let mut log_files = public_function::get_list_filename(&partition_name).await;
+    let mut log_files = entity_lib::function::get_list_filename(&partition_name).await;
 
     if log_files.len() == 0 {
         return Ok(None);

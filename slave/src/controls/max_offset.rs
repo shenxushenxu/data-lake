@@ -3,7 +3,7 @@ use memmap2::Mmap;
 use tokio::fs::OpenOptions;
 use entity_lib::entity::const_property::METADATA_LOG;
 use entity_lib::entity::Error::DataLakeError;
-use public_function::get_partition_path;
+use entity_lib::function::get_partition_path;
 
 pub async fn get_max_offset(partition_code: &String) -> Result<i64, DataLakeError> {
 

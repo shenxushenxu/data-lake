@@ -8,7 +8,8 @@ pub enum DaqlType{
     SELECT_TABLE(QueryMessage),
     ALTER_OROP((String, String)),
     ALTER_ADD((String, String, String, String, String)),
-    SHOW_TABLE(String),
+    DESC_TABLE(String),
+    SHOW_TABLE,
     COMPRESS_TABLE(String),
     DROP_TABLE(String),
     MAX_OFFSET(String)

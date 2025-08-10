@@ -2,9 +2,9 @@ use std::sync::{Arc, LazyLock};
 use dashmap::DashMap;
 use tokio::net::TcpStream;
 use tokio::sync::Mutex;
-use entity_lib::entity::MasterEntity::TableStructure;
-use entity_lib::entity::SlaveEntity::SlaveCacheStruct;
-use crate::PosttingTcpStream::DataLakeTcpStream;
+use crate::entity::MasterEntity::TableStructure;
+use crate::entity::SlaveEntity::SlaveCacheStruct;
+use crate::function::PosttingTcpStream::DataLakeTcpStream;
 
 /**
 master 端缓存的 插入slave 的 tcp 链接对象

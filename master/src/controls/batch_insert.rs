@@ -1,10 +1,7 @@
 use crate::controls::metadata::get_metadata;
-use entity_lib::entity::DataLakeEntity::{BatchData, SlaveBatchData};
+use entity_lib::entity::DataLakeEntity::{BatchData, SlaveBatchData, SlaveInsert};
 use entity_lib::entity::Error::DataLakeError;
-use entity_lib::entity::MasterEntity::{SlaveInsert};
 use entity_lib::entity::SlaveEntity::SlaveMessage;
-use public_function::PosttingTcpStream::DataLakeTcpStream;
-use public_function::string_trait::StringFunction;
 use rayon::prelude::*;
 use std::collections::HashMap;
 use std::panic::Location;
@@ -14,7 +11,9 @@ use chrono::{DateTime, Utc};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::{Mutex};
 use entity_lib::entity::const_property;
-use public_function::BufferObject::INSERT_TCPSTREAM_CACHE_POOL;
+use entity_lib::function::BufferObject::INSERT_TCPSTREAM_CACHE_POOL;
+use entity_lib::function::PosttingTcpStream::DataLakeTcpStream;
+use entity_lib::function::string_trait::StringFunction;
 
 pub async fn batch_insert_data<'a>(
     message_bytes: Vec<u8>,
@@ -23,15 +22,16 @@ pub async fn batch_insert_data<'a>(
 
     let message_leak = Box::leak(Box::new(message_bytes));
 
-
-    // 在独立作用域中完成反序列化
+ 
+    
     let batch_data_result = {
         let raw_ptr = message_leak as *mut Vec<u8>;
         // 临时借用仅在此作用域内存在
         let slice = unsafe { &*raw_ptr };
-        bincode::deserialize::<BatchData>(slice)
+        BatchData::entity_decode(slice)
     };
-
+    
+    
     
     match batch_data_result {
         Ok(batch_data) => {
@@ -78,8 +78,7 @@ pub async fn batch_insert_data<'a>(
             };
 
             let column = { batch_data_leak.column.clone() };
-            
-            
+
             let mut index = batch_data_leak.get_data_size();
             loop {
                 if index != 0 {
@@ -100,7 +99,6 @@ pub async fn batch_insert_data<'a>(
                 }
             }
             
-            
             let mut join_handle_set = tokio::task::JoinSet::new();
             for (partition_code, slave_batch_data) in res_map {
 
@@ -115,7 +113,7 @@ pub async fn batch_insert_data<'a>(
                 join_handle_set.spawn(async move {
 
 
-
+                    
                     let mut partition_address = table_structure_clone.partition_address.clone();
                     let tcp_key = format!("{}-{}", uuid_clone.as_ref(), partition_code);
 
@@ -142,27 +140,25 @@ pub async fn batch_insert_data<'a>(
                     };
 
                     let mut stream = tcp_stream.lock().await;
+                    
+                    let slave_message = SlaveMessage::batch_insert(table_structure_clone);
+                    let bytes = bincode::serialize(&slave_message)?;
+                    let bytes_len = bytes.len() as i32;
+                    stream.write_i32(bytes_len).await?;
+                    stream.write_all(&bytes).await?;
+
                     let slave_insert = SlaveInsert {
                         table_name: table_name_clone,
                         data: slave_batch_data,
                         partition_code: partition_code,
-                        table_structure: table_structure_clone,
                     };
-
-
-
-                    let slave_message = SlaveMessage::batch_insert(slave_insert);
-
-                    let bytes = bincode::serialize(&slave_message)?;
+                    let slave_insert_bytes = slave_insert.serialize()?;
+                    stream.write_i32(slave_insert_bytes.len() as i32).await?;
+                    stream.write_all(&slave_insert_bytes).await?;
 
                     
-                    let bytes_len = bytes.len() as i32;
-
-                    stream.write_i32(bytes_len).await?;
-                    stream.write_all(&bytes).await?;
-
+                    
                     let bytes_len = stream.read_i32().await?;
-                
                     if bytes_len == -2 {
                         let meass_len = stream.read_i32().await?;
                         let mut message = vec![0; meass_len as usize];
@@ -171,7 +167,6 @@ pub async fn batch_insert_data<'a>(
                         let message_str = String::from_utf8(message)?;
                         return Err(DataLakeError::custom(message_str));
                     }
-
 
                     return Ok(());
                 });
@@ -202,23 +197,14 @@ pub async fn batch_insert_data<'a>(
                 Box::from_raw(message_leak);
                 Box::from_raw(batch_data_leak);
             }
-
             
             return Ok(());
-            
-            
-            
-            
         }
         Err(e) => {
-
             unsafe {
                 Box::from_raw(message_leak);
             }
-            return Err(DataLakeError::BincodeError {
-                source: e,
-                location: Location::caller(),
-            });
+            return Err(e);
         }
     };
 }

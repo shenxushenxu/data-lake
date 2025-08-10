@@ -1,22 +1,21 @@
+pub mod BufferObject;
 pub mod PosttingTcpStream;
 pub mod RandomNumber;
 pub mod read_function;
 pub mod string_trait;
 pub mod vec_trait;
-pub mod BufferObject;
+pub mod fast_validate;
 
-use entity_lib::entity::Error::DataLakeError;
 use std::collections::HashMap;
-use std::iter::Map;
-use std::net::ToSocketAddrs;
 use std::path::Path;
 use std::sync::LazyLock;
-use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt};
-use tokio::net::TcpStream;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::tcp::WriteHalf;
+use tokio::net::TcpStream;
 use tokio::sync::Mutex;
-use entity_lib::entity::const_property;
-use entity_lib::entity::MasterEntity::{ColumnConfigJudgment, DataType};
+use crate::entity::const_property;
+use crate::entity::Error::DataLakeError;
+use crate::entity::MasterEntity::{ColumnConfigJudgment, DataType};
 
 pub struct MasterConfig {
     pub master_data_port: String,
@@ -24,7 +23,7 @@ pub struct MasterConfig {
     pub slave_nodes: Vec<String>,
     pub slave_index: usize,
     pub data_path_index: usize,
-    
+
 }
 
 impl MasterConfig {
@@ -42,20 +41,20 @@ impl MasterConfig {
         }
     }
 
-    
+
     // master_data_path_index
     pub async fn get_master_data_path(&mut self) -> String {
         let master_data_path = &self.master_data_path;
 
-        
+
         if self.data_path_index >= master_data_path.len() {
             self.data_path_index = 0;
         }
-        
+
         let data_path = master_data_path[self.data_path_index].clone();
 
         self.data_path_index = self.data_path_index + 1;
-        
+
         return data_path;
     }
 
@@ -63,15 +62,13 @@ impl MasterConfig {
     pub async fn get_slave_nodes(&mut self) -> String {
         let slave_nodes = &self.slave_nodes;
 
-        let mut master_slave_index = self.data_path_index;
-        let address = slave_nodes[master_slave_index].clone();
-
-        if master_slave_index == (slave_nodes.len() - 1) {
+        if self.data_path_index >= slave_nodes.len() {
             self.data_path_index = 0;
-        } else {
-            self.data_path_index = master_slave_index + 1;
         }
-        
+        let address = slave_nodes[self.data_path_index].clone();
+
+        self.data_path_index = self.data_path_index + 1;
+
         return address;
     }
 }
@@ -103,7 +100,7 @@ impl SlaveConfig {
     // slave_data_path_index
     pub async fn get_slave_data(&mut self) -> String {
         let master_data_path = &self.slave_data;
-        
+
         let mut path_index = self.data_path_index;
 
         let data_path = master_data_path[path_index].clone();
@@ -113,7 +110,7 @@ impl SlaveConfig {
         } else {
             self.data_path_index = path_index + 1;
         }
-        
+
         return data_path;
     }
 }
@@ -166,7 +163,7 @@ pub async fn get_list_filename(partition_name: &str) -> Vec<(String, String)> {
         let slave_data = &slave_config.slave_data;
         slave_data.clone()
     };
-    
+
 
     let partition_path_vec = slave_data
         .iter()
@@ -238,7 +235,7 @@ pub async fn get_partition_path(partition_code: &str) -> String {
             }
         }
     }
-    
+
     panic!("Failed to get partition path: {}", partition_code);
 }
 
@@ -246,9 +243,9 @@ pub async fn get_partition_path(partition_code: &str) -> String {
 发送异常
 **/
 pub async fn write_error(err: DataLakeError, write_half: &mut WriteHalf<'_>) {
-    
+
     let addr = write_half.local_addr().unwrap().to_string();
-    
+
     write_half.write_i32(-2).await.unwrap();
 
     let err_mess = format!("{} ERROR: {}", addr, err);

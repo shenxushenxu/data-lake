@@ -1,8 +1,8 @@
-use entity_lib::entity::Error::DataLakeError;
-use entity_lib::entity::MasterEntity::{Info, PartitionInfo};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
-use crate::RandomNumber::{random_number};
+use crate::entity::Error::DataLakeError;
+use crate::entity::MasterEntity::{Info, PartitionInfo};
+use crate::function::RandomNumber::random_number;
 
 pub struct DataLakeTcpStream {
     stream: TcpStream,
@@ -56,13 +56,17 @@ impl DataLakeTcpStream {
             Err(e) => Err(e),
         }
     }
+    
+    pub fn get_stream(&self) -> &TcpStream {
+        return &self.stream
+    }
 
     pub async fn write_i32(&mut self, n: i32) -> Result<(), DataLakeError> {
         match self.stream.write_i32(n).await{
             Ok(_) => {
             }
             Err(_) => {
-                
+
             }
         }
         return Ok(());

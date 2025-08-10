@@ -10,7 +10,7 @@ use tokio::net::TcpStream;
 use tokio::sync::Mutex;
 use tokio::sync::mpsc::Receiver;
 use tokio::task::JoinError;
-use public_function::BufferObject::STREAM_TCP_TABLESTRUCTURE;
+use entity_lib::function::BufferObject::STREAM_TCP_TABLESTRUCTURE;
 
 pub async fn stream_read_data(
     masterstreamread: MasterStreamRead,

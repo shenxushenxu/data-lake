@@ -14,7 +14,6 @@ use chrono::{Datelike, Timelike};
 use daql_analysis::daql_analysis_function;
 use entity_lib::entity::DaqlEntity::DaqlType;
 use entity_lib::entity::MasterEntity::{Statement};
-use public_function::{MASTER_CONFIG, MasterConfig, load_properties};
 use snap::raw::Decoder;
 use std::any::Any;
 use std::sync::Arc;
@@ -23,11 +22,8 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
 use tokio::task::JoinHandle;
 use uuid::Uuid;
-use public_function::BufferObject::{INSERT_TCPSTREAM_CACHE_POOL, STREAM_TCP_TABLESTRUCTURE};
-
-
-
-
+use entity_lib::function::{load_properties, MasterConfig, MASTER_CONFIG};
+use entity_lib::function::BufferObject::{INSERT_TCPSTREAM_CACHE_POOL, STREAM_TCP_TABLESTRUCTURE};
 
 #[global_allocator]
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
@@ -117,7 +113,7 @@ fn data_interface() -> JoinHandle<()> {
                                                     write.write_i32(-1).await.unwrap();
                                                 }
                                                 Err(e) => {
-                                                    public_function::write_error(e, &mut write)
+                                                    entity_lib::function::write_error(e, &mut write)
                                                         .await;
                                                 }
                                             }
@@ -139,7 +135,7 @@ fn data_interface() -> JoinHandle<()> {
                                                     write.write_i32(-1).await.unwrap();
                                                 }
                                                 Err(e) => {
-                                                    public_function::write_error(e, &mut write)
+                                                    entity_lib::function::write_error(e, &mut write)
                                                         .await;
                                                 }
                                             }
@@ -150,7 +146,7 @@ fn data_interface() -> JoinHandle<()> {
                                                     write.write_i32(-1).await.unwrap();
                                                 }
                                                 Err(e) => {
-                                                    public_function::write_error(e, &mut write)
+                                                    entity_lib::function::write_error(e, &mut write)
                                                         .await;
                                                 }
                                             }
@@ -161,12 +157,12 @@ fn data_interface() -> JoinHandle<()> {
                                                     write.write_i32(-1).await.unwrap();
                                                 }
                                                 Err(e) => {
-                                                    public_function::write_error(e, &mut write)
+                                                    entity_lib::function::write_error(e, &mut write)
                                                         .await;
                                                 }
                                             }
                                         }
-                                        DaqlType::SHOW_TABLE(table_name) => {
+                                        DaqlType::DESC_TABLE(table_name) => {
                                             let metadata_return =
                                                 get_table_metadata(&table_name).await;
                                             match metadata_return {
@@ -189,7 +185,24 @@ fn data_interface() -> JoinHandle<()> {
                                                     write.write_i32(-1).await.unwrap();
                                                 }
                                                 Err(e) => {
-                                                    public_function::write_error(e, &mut write)
+                                                    entity_lib::function::write_error(e, &mut write)
+                                                        .await;
+                                                }
+                                            }
+                                        }
+                                        DaqlType::SHOW_TABLE => {
+                                            match controls::show_table::show_table().await{
+                                                Ok(tables) => {
+                                                    let json = serde_json::to_string(&tables).unwrap();
+                                                    let bytes = json.as_bytes();
+                                                    let bytes_len = bytes.len() as i32;
+                                                    write.write_i32(bytes_len).await.unwrap();
+                                                    write.write_all(bytes).await.unwrap();
+
+                                                    write.write_i32(-1).await.unwrap();
+                                                }
+                                                Err(e) => {
+                                                    entity_lib::function::write_error(e, &mut write)
                                                         .await;
                                                 }
                                             }
@@ -202,7 +215,7 @@ fn data_interface() -> JoinHandle<()> {
                                                     write.write_i32(-1).await.unwrap();
                                                 }
                                                 Err(e) => {
-                                                    public_function::write_error(e, &mut write)
+                                                    entity_lib::function::write_error(e, &mut write)
                                                         .await;
                                                 }
                                             }
@@ -213,7 +226,7 @@ fn data_interface() -> JoinHandle<()> {
                                                     write.write_i32(-1).await.unwrap();
                                                 }
                                                 Err(e) => {
-                                                    public_function::write_error(e, &mut write)
+                                                    entity_lib::function::write_error(e, &mut write)
                                                         .await;
                                                 }
                                             }
@@ -233,14 +246,14 @@ fn data_interface() -> JoinHandle<()> {
                                                     write.write_i32(-1).await.unwrap();
                                                 }
                                                 Err(e) => {
-                                                    public_function::write_error(e, &mut write)
+                                                    entity_lib::function::write_error(e, &mut write)
                                                         .await;
                                                 }
                                             }
                                         }
                                     },
                                     Err(e) => {
-                                        public_function::write_error(e, &mut write).await;
+                                        entity_lib::function::write_error(e, &mut write).await;
                                     }
                                 },
                                 Statement::stream_read(stream_read) => {
@@ -262,7 +275,7 @@ fn data_interface() -> JoinHandle<()> {
                                             write.write_i32(-1).await.unwrap();
                                         }
                                         Err(e) => {
-                                            public_function::write_error(e, &mut write).await;
+                                            entity_lib::function::write_error(e, &mut write).await;
                                         }
                                     }
                                 }
@@ -277,7 +290,7 @@ fn data_interface() -> JoinHandle<()> {
                                         .decompress_vec(&batch_data)
                                         .unwrap_or_else(|e| panic!("解压失败: {}", e));
 
-                                    
+
 
                                     let arc_uuid_clone = Arc::clone(&uuid_arc);
                                     let batch_return = controls::batch_insert::batch_insert_data(
@@ -285,13 +298,13 @@ fn data_interface() -> JoinHandle<()> {
                                         arc_uuid_clone,
                                     ).await;
 
-                                    
+
                                     match batch_return {
                                         Ok(_) => {
                                             write.write_i32(-1).await.unwrap();
                                         }
                                         Err(e) => {
-                                            public_function::write_error(e, &mut write).await;
+                                            entity_lib::function::write_error(e, &mut write).await;
                                         }
                                     }
                                 }
@@ -299,7 +312,7 @@ fn data_interface() -> JoinHandle<()> {
                         }
 
                         Err(e) => {
-                            
+
                             // 输入插入连接断开，清理缓存中的连接
                             /**
                             操作	                     危险场景	                  规避方案

@@ -1,11 +1,11 @@
 use entity_lib::entity::Error::DataLakeError;
 use entity_lib::entity::MasterEntity::{Info, PartitionInfo, TableStructure};
 use entity_lib::entity::SlaveEntity::{SlaveCreate, SlaveMessage};
-use public_function::MASTER_CONFIG;
 use std::path::Path;
 use tokio::fs::OpenOptions;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
+use entity_lib::function::MASTER_CONFIG;
 
 pub async fn create_table(table_structure: TableStructure) -> Result<(), DataLakeError> {
     let mut master_config = MASTER_CONFIG.lock().await;

@@ -4,6 +4,8 @@ pub mod Error;
 pub mod DaqlEntity;
 pub mod const_property;
 pub mod DataLakeEntity;
+pub mod bytes_reader;
+
 use serde::{Deserialize, Serialize};
 use crate::entity::MasterEntity::Statement;
 

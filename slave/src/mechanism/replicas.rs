@@ -6,13 +6,11 @@ use entity_lib::entity::SlaveEntity::{
 };
 use entity_lib::entity::const_property::INDEX_SIZE;
 use memmap2::{Mmap, MmapMut};
-use public_function::vec_trait::VecPutVec;
-use public_function::{SLAVE_CONFIG, get_partition_path};
-use std::io::SeekFrom;
 use std::path::Path;
 use tokio::fs::OpenOptions;
-use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
+use entity_lib::function::{get_partition_path, SLAVE_CONFIG};
 
 /**
 Follower副本 同步  Leader副本的数据
@@ -112,7 +110,7 @@ pub async fn Leader_replicas_sync(
     let offset = sync_message.offset;
     let partition_code = &sync_message.partition_code;
 
-    let mut log_files = public_function::get_list_filename(&partition_code).await;
+    let mut log_files = entity_lib::function::get_list_filename(&partition_code).await;
 
     if log_files.len() == 0 {
         return Ok(None);

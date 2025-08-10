@@ -2,10 +2,9 @@ use std::collections::HashMap;
 use entity_lib::entity::Error::DataLakeError;
 use entity_lib::entity::MasterEntity::TableStructure;
 use memmap2::Mmap;
-use public_function::MASTER_CONFIG;
 use std::path::Path;
 use tokio::fs::OpenOptions;
-
+use entity_lib::function::MASTER_CONFIG;
 
 /**
 pub struct TableStructure {

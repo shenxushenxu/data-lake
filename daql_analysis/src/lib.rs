@@ -5,7 +5,7 @@ use crate::analysis::select_daql::select_analysis;
 use analysis::create_daql::create_analysis;
 use entity_lib::entity::DaqlEntity::DaqlType;
 use entity_lib::entity::Error::DataLakeError;
-use public_function::string_trait::StringFunction;
+use entity_lib::function::string_trait::StringFunction;
 
 fn get_beginning(sql: &String) -> String {
     let mut identification = String::new();
@@ -43,9 +43,9 @@ pub async fn daql_analysis_function<'a>(daql: &'a str) -> Result<DaqlType, DataL
             let add_col = alter_daql_add(&alter_spl).await?;
             return Ok(DaqlType::ALTER_ADD(add_col));
         }
-    }else if identification.eq("show") {
+    }else if identification.eq("desc") {
         let table_name = sql.split(" ").collect::<Vec<&str>>()[1].to_string();
-        return Ok(DaqlType::SHOW_TABLE(table_name));
+        return Ok(DaqlType::DESC_TABLE(table_name));
     }else if identification.eq("compress") {
         let table_name = sql.split(" ").collect::<Vec<&str>>()[1].to_string();
         return Ok(DaqlType::COMPRESS_TABLE(table_name));
@@ -55,6 +55,8 @@ pub async fn daql_analysis_function<'a>(daql: &'a str) -> Result<DaqlType, DataL
     }else if identification.eq("max_offset") {
         let table_name = sql.split(" ").collect::<Vec<&str>>()[1].to_string();
         return Ok(DaqlType::MAX_OFFSET(table_name));
+    }else if identification.eq("show_table") {
+        return Ok(DaqlType::SHOW_TABLE);
     }
 
     return Err(DataLakeError::custom(format!("{}  语句错误", sql)));

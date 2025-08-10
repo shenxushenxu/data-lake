@@ -11,4 +11,4 @@ snap = {workspace = true}
 bincode = {workspace = true}
 
 
-entity_lib = {path = "../entity_lib"}
+entity_lib = {path = "../data-lake-lib" }

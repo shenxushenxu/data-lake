@@ -2,7 +2,7 @@ use tokio::fs::OpenOptions;
 use tokio::io::AsyncWriteExt;
 use entity_lib::entity::Error::DataLakeError;
 use entity_lib::entity::SlaveEntity::SlaveCreate;
-use public_function::SLAVE_CONFIG;
+use entity_lib::function::SLAVE_CONFIG;
 
 pub async fn create_table_controls(create_message: SlaveCreate) -> Result<(), DataLakeError> {
     

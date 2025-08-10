@@ -8,15 +8,15 @@ use crate::controls::max_offset::get_max_offset;
 use crate::controls::query_table::query;
 use crate::controls::stream_read::stream_read;
 use crate::mechanism::replicas::{Leader_replicas_sync, follower_replicas_sync};
-use chrono::{DateTime, Datelike, Timelike, Utc};
-use entity_lib::entity::MasterEntity::SlaveInsert;
+use chrono::{Datelike, Timelike};
 use entity_lib::entity::SlaveEntity::SlaveMessage;
-use public_function::{SLAVE_CONFIG, SlaveConfig, load_properties};
 use std::time::Instant;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
 use tokio::task::JoinHandle;
 use uuid::Uuid;
+use entity_lib::entity::DataLakeEntity::SlaveInsert;
+use entity_lib::function::{load_properties, SlaveConfig, SLAVE_CONFIG};
 
 #[global_allocator]
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
@@ -98,7 +98,6 @@ fn data_read_write() -> JoinHandle<()> {
                             let slave_message =
                                 bincode::deserialize::<SlaveMessage>(&message).unwrap();
 
-
                             match slave_message {
                                 SlaveMessage::create(create_message) => {
                                     let create_return = create_table_controls(create_message).await;
@@ -108,7 +107,7 @@ fn data_read_write() -> JoinHandle<()> {
                                             write.write_i32(-1).await.unwrap();
                                         }
                                         Err(e) => {
-                                            public_function::write_error(e, &mut write).await;
+                                            entity_lib::function::write_error(e, &mut write).await;
                                         }
                                     }
                                 }
@@ -130,7 +129,7 @@ fn data_read_write() -> JoinHandle<()> {
                                             write.write_i32(-1).await.unwrap();
                                         }
                                         Err(e) => {
-                                            public_function::write_error(e, &mut write).await;
+                                            entity_lib::function::write_error(e, &mut write).await;
                                         }
                                     }
                                 }
@@ -148,7 +147,7 @@ fn data_read_write() -> JoinHandle<()> {
                                             write.write_i32(-1).await.unwrap();
                                         }
                                         Err(e) => {
-                                            public_function::write_error(e, &mut write).await;
+                                            entity_lib::function::write_error(e, &mut write).await;
                                         }
                                     }
                                 }
@@ -170,23 +169,28 @@ fn data_read_write() -> JoinHandle<()> {
                                             }
                                         },
                                         Err(e) => {
-                                            public_function::write_error(e, &mut write).await;
+                                            entity_lib::function::write_error(e, &mut write).await;
                                         }
                                     }
                                 }
-                                SlaveMessage::batch_insert(slave_insert) => {
+                                SlaveMessage::batch_insert(table_structure) => {
+                                    
+                                    let slave_insert_len = read.read_i32().await.unwrap();
+                                    let mut slave_insert_bytes = vec![0u8; slave_insert_len as usize];
+                                    read.read_exact(slave_insert_bytes.as_mut_slice()).await.unwrap();
 
+                                    let slave_insert = SlaveInsert::deserialize(slave_insert_bytes.as_slice()).unwrap();
+                                    
                                     let batch_return =
-                                        controls::batch_insert::batch_insert_data(slave_insert)
+                                        controls::batch_insert::batch_insert_data(slave_insert, &table_structure)
                                             .await;
 
                                     match batch_return {
                                         Ok(_) => {
                                             write.write_i32(-1).await.unwrap();
-                                           
                                         }
                                         Err(e) => {
-                                            public_function::write_error(e, &mut write).await;
+                                            entity_lib::function::write_error(e, &mut write).await;
                                         }
                                     }
                                 }
@@ -197,7 +201,7 @@ fn data_read_write() -> JoinHandle<()> {
                                             
                                         }
                                         Err(e) => {
-                                            public_function::write_error(e, &mut write).await;
+                                            entity_lib::function::write_error(e, &mut write).await;
                                         }
                                     }
                                 }
@@ -207,7 +211,7 @@ fn data_read_write() -> JoinHandle<()> {
                                             write.write_i32(-1).await.unwrap();
                                         }
                                         Err(e) => {
-                                            public_function::write_error(e, &mut write).await;
+                                            entity_lib::function::write_error(e, &mut write).await;
                                         }
                                     }
                                 }
@@ -229,7 +233,7 @@ fn data_read_write() -> JoinHandle<()> {
                                             }
                                         }
                                         Err(e) => {
-                                            public_function::write_error(e, &mut write).await;
+                                            entity_lib::function::write_error(e, &mut write).await;
                                         }
                                     }
                                 }
@@ -240,7 +244,7 @@ fn data_read_write() -> JoinHandle<()> {
                                             write.write_i64(offset).await.unwrap();
                                         }
                                         Err(e) => {
-                                            public_function::write_error(e, &mut write).await;
+                                            entity_lib::function::write_error(e, &mut write).await;
                                         }
                                     }
                                 }

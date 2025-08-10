@@ -1,20 +1,21 @@
 use entity_lib::entity::MasterEntity::{Info, PartitionInfo, TableStructure};
 use entity_lib::entity::SlaveEntity::{ReplicasSyncStruct, SlaveMessage};
 use memmap2::Mmap;
-use public_function::MASTER_CONFIG;
 use tokio::fs::OpenOptions;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tokio::task::JoinHandle;
 use entity_lib::entity::Error::DataLakeError;
+use entity_lib::function::MASTER_CONFIG;
 
 pub fn copy_sync_notif() -> JoinHandle<Result<(), DataLakeError>> {
     tokio::spawn(async move {
         loop {
             let sync_notif = tokio::spawn(async move {
-                let master_config = MASTER_CONFIG.lock().await;
-                let data_path_vec = master_config.master_data_path.clone();
-                drop(master_config);
+                let data_path_vec = {
+                    let master_config = MASTER_CONFIG.lock().await;
+                    master_config.master_data_path.clone()
+                };
 
                 let mut table_path_vec: Vec<String> = Vec::new();
 

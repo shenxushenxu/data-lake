@@ -4,6 +4,4 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-
-public_function = {path = "../public_function"}
-entity_lib = {path = "../entity_lib"}
+entity_lib = {path = "../data-lake-lib" }

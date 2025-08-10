@@ -2,8 +2,8 @@ use std::collections::HashMap;
 use entity_lib::entity::const_property;
 use entity_lib::entity::Error::DataLakeError;
 use entity_lib::entity::MasterEntity::{ColumnConfigJudgment, DataType, Info, PartitionInfo, TableStructure};
-use public_function::RandomNumber::{random_number};
-use public_function::MASTER_CONFIG;
+use entity_lib::function::MASTER_CONFIG;
+use entity_lib::function::RandomNumber::random_number;
 
 pub async fn create_analysis(sql: &String) -> Result<TableStructure, DataLakeError> {
     // 获得左括号的位置
@@ -124,8 +124,8 @@ pub async fn create_analysis(sql: &String) -> Result<TableStructure, DataLakeErr
     
     let replicas_number = if let Some(replicas_number) = config.get(const_property::REPLICAS_NUMBER) {
         replicas_number.parse::<usize>()?
-    }else {
-        return Err(DataLakeError::custom(format!("unfound {} .", const_property::REPLICAS_NUMBER)));
+    }else { 
+        0
     };
     
     

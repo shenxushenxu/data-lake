@@ -9,7 +9,6 @@ serde_json = { workspace = true }
 bincode = {workspace = true}
 memmap2 = {workspace = true}
 uuid = {workspace = true}
-log = {workspace = true}
 env_logger = {workspace = true}
 snap = {workspace = true}
 rayon = {workspace = true}
@@ -18,6 +17,5 @@ dashmap = { workspace = true }
 mimalloc = {workspace = true}
 
 
-entity_lib = {path = "../entity_lib"}
-public_function = {path = "../public_function"}
+entity_lib = {path = "../data-lake-lib" }
 daql_analysis = {path = "../daql_analysis"}
