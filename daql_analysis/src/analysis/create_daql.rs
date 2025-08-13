@@ -46,7 +46,7 @@ pub async fn create_analysis(sql: &String) -> Result<TableStructure, DataLakeErr
             "int" => DataType::int,
             "float" => DataType::float,
             "boolean" => DataType::boolean,
-            "long" => DataType::string,
+            "long" => DataType::long,
             _ => {
                 return Err(DataLakeError::custom(format!(
                     "Unknown column type {}",
@@ -69,7 +69,7 @@ pub async fn create_analysis(sql: &String) -> Result<TableStructure, DataLakeErr
 
                 (ColumnConfigJudgment::DEFAULT, Some(value))
             }
-            ("", "") => (ColumnConfigJudgment::NOT, None),
+            ("", "") => (ColumnConfigJudgment::NULL, None),
             _ => {
                 return Err(DataLakeError::custom(format!(
                     "Unknown column config {} {}",

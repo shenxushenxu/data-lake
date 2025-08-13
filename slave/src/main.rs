@@ -1,6 +1,7 @@
 mod controls;
 mod mechanism;
 
+use std::sync::Arc;
 use crate::controls::compress_table::compress_table;
 use crate::controls::create_table::create_table_controls;
 use crate::controls::drop_table::drop_table_operation;
@@ -17,6 +18,8 @@ use tokio::task::JoinHandle;
 use uuid::Uuid;
 use entity_lib::entity::DataLakeEntity::SlaveInsert;
 use entity_lib::function::{load_properties, SlaveConfig, SLAVE_CONFIG};
+use entity_lib::function::BufferObject::FILE_CACHE_POOL;
+
 
 #[global_allocator]
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
@@ -28,6 +31,7 @@ static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 **/
 #[tokio::main]
 async fn main() {
+    
     {
         let args: Vec<String> = std::env::args().collect();
         println!("{:?}", args);
@@ -270,7 +274,12 @@ fn data_read_write() -> JoinHandle<()> {
                                 }
                             }
 
-                            // println!("master 与 slave 的连接断开了:  {}", e);
+                            let file_cache_pool = Arc::clone(&FILE_CACHE_POOL);
+                            
+                            file_cache_pool.clear();
+                            
+
+                            println!("master 与 slave 的连接断开了:  {}", e);
                             break;
                         }
                     }

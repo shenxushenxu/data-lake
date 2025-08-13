@@ -34,8 +34,8 @@ pub enum ColumnConfigJudgment {
     NOT_NULL,
     // 插入的值可以为null，为null则为默认值
     DEFAULT,
-    
-    NOT
+    // 可以为null
+    NULL
 }
 
 impl Display for ColumnConfigJudgment {
@@ -44,7 +44,7 @@ impl Display for ColumnConfigJudgment {
             ColumnConfigJudgment::PRIMARY_KEY => {write!(f, "PRIMARY_KEY")}
             ColumnConfigJudgment::NOT_NULL => {write!(f, "NOT_NULL")}
             ColumnConfigJudgment::DEFAULT => {write!(f, "DEFAULT")}
-            ColumnConfigJudgment::NOT => {write!(f, "NOT")}
+            ColumnConfigJudgment::NULL => {write!(f, "NULL")}
         }
     }
 }

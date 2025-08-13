@@ -119,26 +119,26 @@ fn data_interface() -> JoinHandle<()> {
                                             }
                                         }
                                         DaqlType::SELECT_TABLE(querymessage) => {
-                                            match query_daql(querymessage).await {
-                                                Ok(option_vec) => {
-                                                    if let Some(vec) = option_vec {
-                                                        for ve in vec {
-                                                            let byt = ve.as_bytes();
-                                                            let write_len = byt.len();
-                                                            write
-                                                                .write_i32(write_len as i32)
-                                                                .await
-                                                                .unwrap();
-                                                            write.write_all(byt).await.unwrap();
-                                                        }
-                                                    }
-                                                    write.write_i32(-1).await.unwrap();
-                                                }
-                                                Err(e) => {
-                                                    entity_lib::function::write_error(e, &mut write)
-                                                        .await;
-                                                }
-                                            }
+                                            // match query_daql(querymessage).await {
+                                            //     Ok(option_vec) => {
+                                            //         if let Some(vec) = option_vec {
+                                            //             for ve in vec {
+                                            //                 let byt = ve.as_bytes();
+                                            //                 let write_len = byt.len();
+                                            //                 write
+                                            //                     .write_i32(write_len as i32)
+                                            //                     .await
+                                            //                     .unwrap();
+                                            //                 write.write_all(byt).await.unwrap();
+                                            //             }
+                                            //         }
+                                            //         write.write_i32(-1).await.unwrap();
+                                            //     }
+                                            //     Err(e) => {
+                                            //         entity_lib::function::write_error(e, &mut write)
+                                            //             .await;
+                                            //     }
+                                            // }
                                         }
                                         DaqlType::ALTER_OROP(alterorop) => {
                                             match alter_orop(alterorop).await {
@@ -182,7 +182,6 @@ fn data_interface() -> JoinHandle<()> {
                                                         .await
                                                         .unwrap();
                                                     write.write_all(write_message).await.unwrap();
-                                                    write.write_i32(-1).await.unwrap();
                                                 }
                                                 Err(e) => {
                                                     entity_lib::function::write_error(e, &mut write)
@@ -199,7 +198,6 @@ fn data_interface() -> JoinHandle<()> {
                                                     write.write_i32(bytes_len).await.unwrap();
                                                     write.write_all(bytes).await.unwrap();
 
-                                                    write.write_i32(-1).await.unwrap();
                                                 }
                                                 Err(e) => {
                                                     entity_lib::function::write_error(e, &mut write)
@@ -242,8 +240,7 @@ fn data_interface() -> JoinHandle<()> {
                                                     let bytes_len = bytes.len() as i32;
                                                     write.write_i32(bytes_len).await.unwrap();
                                                     write.write_all(bytes).await.unwrap();
-
-                                                    write.write_i32(-1).await.unwrap();
+                                                    
                                                 }
                                                 Err(e) => {
                                                     entity_lib::function::write_error(e, &mut write)

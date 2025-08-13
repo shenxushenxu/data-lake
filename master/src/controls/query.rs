@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use crate::controls::metadata::get_metadata;
 use entity_lib::entity::Error::DataLakeError;
 use entity_lib::entity::SlaveEntity::{QueryMessage, SlaveMessage};
 use std::sync::Arc;

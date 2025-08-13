@@ -1,4 +1,3 @@
-use crate::controls::metadata::get_metadata;
 use entity_lib::entity::DataLakeEntity::{BatchData, SlaveBatchData, SlaveInsert};
 use entity_lib::entity::Error::DataLakeError;
 use entity_lib::entity::SlaveEntity::SlaveMessage;
@@ -14,6 +13,7 @@ use entity_lib::entity::const_property;
 use entity_lib::function::BufferObject::INSERT_TCPSTREAM_CACHE_POOL;
 use entity_lib::function::PosttingTcpStream::DataLakeTcpStream;
 use entity_lib::function::string_trait::StringFunction;
+use entity_lib::function::table_structure::get_table_structure;
 
 pub async fn batch_insert_data<'a>(
     message_bytes: Vec<u8>,
@@ -50,7 +50,7 @@ pub async fn batch_insert_data<'a>(
             }
 
             let table_name = batch_data_leak.table_name;
-            let mut table_structure = match get_metadata(&table_name).await {
+            let mut table_structure = match get_table_structure(&table_name).await {
                 Ok(table_structure) => table_structure,
                 Err(e) => {
                     unsafe {
@@ -126,10 +126,12 @@ pub async fn batch_insert_data<'a>(
                         false => {
                             let partition_address = &mut partition_address;
                             let partition_info_vec = partition_address
-                                .get_mut(&(partition_code as usize))
+                                .get(&(partition_code as usize))
                                 .unwrap();
 
-                            let stream = DataLakeTcpStream::connect(partition_info_vec).await?;
+                            let stream = DataLakeTcpStream::connect(partition_info_vec.clone(),
+                                                                    table_name.to_string(),
+                                                                    partition_code as usize).await?;
 
                             let ref_tcp = insert_tcpstream_cache_pool
                                 .entry(tcp_key.clone())

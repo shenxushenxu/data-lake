@@ -89,13 +89,12 @@ pub async fn insert_operation<'a>(
             Ok((offset, compressed_data))
         }).collect::<Result<Vec<(i64, Vec<u8>)>, DataLakeError>>()?;
 
-    
+
 
     vec_data_structure.sort_unstable_by_key(|x| x.0);
 
-    let start = Instant::now();
 
-    
+
 
     let mut data_vec_len:usize = 0;
     vec_data_structure.iter().for_each(|x| {
@@ -107,9 +106,9 @@ pub async fn insert_operation<'a>(
 
     let mut data_vec = Vec::<u8>::with_capacity(data_vec_len);
     let mut index_vec = Vec::<u8>::with_capacity(vec_data_structure.len() * INDEX_SIZE);
-    
+
     for (_, data_structre_vecu8) in vec_data_structure.iter_mut() {
-        
+
         let data_len = data_structre_vecu8.len() as i32;
         let data_len_bytes = &data_len.to_le_bytes();
 
@@ -133,7 +132,6 @@ pub async fn insert_operation<'a>(
     }
 
 
-    println!("for data:  {:?}", start.elapsed());
 
 
 
@@ -146,8 +144,7 @@ pub async fn insert_operation<'a>(
         .index_file
         .write_all(index_vec.as_slice())
         .await?;
-    
-    println!("write_all:  {:?}", start.elapsed());
+
 
     unsafe {
         let dst_ptr = slave_cache_struct.metadata_mmap.as_mut_ptr();

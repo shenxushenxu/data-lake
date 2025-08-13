@@ -5,6 +5,7 @@ pub mod read_function;
 pub mod string_trait;
 pub mod vec_trait;
 pub mod fast_validate;
+pub mod table_structure;
 
 use std::collections::HashMap;
 use std::path::Path;

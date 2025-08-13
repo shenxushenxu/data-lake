@@ -63,8 +63,6 @@ pub async fn stream_read(
                     data_complete(col_type, data, major_value);
                 });
                 
-                let start = Instant::now();
-                
                 let vec_mess = match serialize_vec_dataStructure(vec_datastructure){
                     Ok(vec_string) => {
                         for box_leak in box_bytes_vec {
@@ -77,7 +75,6 @@ pub async fn stream_read(
                         return Err(DataLakeError::custom(format!("slave 序列化失败报错:{:?}", e)));
                     }
                 };
-                println!("序列化时间:{:?}", start.elapsed());
                 
                 let mut encoder = Encoder::new();
                 let compressed_data = encoder.compress_vec(&vec_mess)?;

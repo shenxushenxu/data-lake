@@ -1,34 +1,20 @@
-use std::sync::Arc;
-use crate::controls::metadata::{get_metadata, get_table_path};
 use entity_lib::entity::Error::DataLakeError;
 use entity_lib::entity::SlaveEntity::SlaveMessage;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
-use entity_lib::function::BufferObject::STREAM_TCP_TABLESTRUCTURE;
+use entity_lib::function::table_structure::{get_table_path, get_table_structure};
 
 pub async fn drop_table_operation(table_name: &String) -> Result<(), DataLakeError> {
-    let tablestructure = get_metadata(table_name).await?;
+    let tablestructure = get_table_structure(table_name).await?;
 
     
 
     let path = get_table_path(table_name).await?;
     
     tokio::fs::remove_file(path).await?;
-    
-    {
 
-        let stream_tcp_tablestructure = Arc::clone(&STREAM_TCP_TABLESTRUCTURE);
-        let mut remove_vec = Vec::<String>::new();
-        stream_tcp_tablestructure.iter().for_each(|x| {
-            let key = x.key();
-            if key.contains(table_name) {
-                remove_vec.push(key.clone());
-            }
-        });
-        remove_vec.iter().for_each(|k| {
-            stream_tcp_tablestructure.remove(k).unwrap();
-        });
-    }
+    // 清除掉表的缓存
+    entity_lib::function::BufferObject::remove_table_cache(&table_name);
 
     let partition_address = tablestructure.partition_address;
     

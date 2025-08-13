@@ -1,16 +1,14 @@
-use std::sync::Arc;
-use crate::controls::metadata::{get_metadata, get_table_path};
 use entity_lib::entity::Error::DataLakeError;
 use tokio::fs::{File};
 use tokio::io::AsyncWriteExt;
-use tokio::net::TcpStream;
-use entity_lib::entity::MasterEntity::{ColumnConfigJudgment, DataType, TableStructure};
+use entity_lib::entity::MasterEntity::{ColumnConfigJudgment, DataType};
 use entity_lib::function::BufferObject::STREAM_TCP_TABLESTRUCTURE;
+use entity_lib::function::table_structure::{get_table_path, get_table_structure};
 
 pub async fn alter_orop(alteradd: (String, String)) -> Result<(), DataLakeError> {
     let table_name = alteradd.0;
     let col_name = alteradd.1;
-    let mut tablestruct = get_metadata(&table_name).await?;
+    let mut tablestruct = get_table_structure(&table_name).await?;
 
     let major_key = &tablestruct.major_key;
 
@@ -28,27 +26,13 @@ pub async fn alter_orop(alteradd: (String, String)) -> Result<(), DataLakeError>
 
         let data = bincode::serialize(&tablestruct)?;
 
-        {
-            let table_name = &tablestruct.table_name;
-
-            let stream_tcp_tablestructure = Arc::clone(&STREAM_TCP_TABLESTRUCTURE);
-            let mut remove_vec = Vec::<String>::new();
-            stream_tcp_tablestructure.iter().for_each(|x| {
-                let key = x.key();
-                if key.contains(table_name) {
-                    remove_vec.push(key.clone());
-                }
-            });
-            remove_vec.iter().for_each(|k| {
-                stream_tcp_tablestructure.remove(k).unwrap();
-            });
-        }
-
-        
+        // 清除掉表的缓存
+        entity_lib::function::BufferObject::remove_table_cache(&table_name);
         
         let file_path = get_table_path(&table_name).await?;
         let mut file = File::create(file_path).await?;
         file.write_all(data.as_slice()).await?;
+        return Ok(());
 
     } else {
         return Err(DataLakeError::custom(format!(
@@ -57,7 +41,6 @@ pub async fn alter_orop(alteradd: (String, String)) -> Result<(), DataLakeError>
         )));
     }
 
-    return Ok(());
 }
 
 pub async fn alter_add(
@@ -69,7 +52,7 @@ pub async fn alter_add(
     let key_words_1 = alteradd.3;
     let key_words_2 = alteradd.4;
 
-    let mut tablestruct = get_metadata(&table_name).await?;
+    let mut tablestruct = get_table_structure(&table_name).await?;
 
 
 
@@ -113,7 +96,7 @@ pub async fn alter_add(
 
                 (ColumnConfigJudgment::DEFAULT, Some(value))
             }
-            ("", "") => (ColumnConfigJudgment::NOT, None),
+            ("", "") => (ColumnConfigJudgment::NULL, None),
             _ => {
                 return Err(DataLakeError::custom(format!(
                     "Unknown column config {} {}",
@@ -125,30 +108,15 @@ pub async fn alter_add(
         col_type.insert(col_name.to_string(), (data_type, column_config.0, column_config.1));
         tablestruct.col_type = col_type;
         
-
-        {
-            let table_name = &tablestruct.table_name;
-
-            let stream_tcp_tablestructure = Arc::clone(&STREAM_TCP_TABLESTRUCTURE);
-            let mut remove_vec = Vec::<String>::new();
-            stream_tcp_tablestructure.iter().for_each(|x| {
-                let key = x.key();
-                if key.contains(table_name) {
-                    remove_vec.push(key.clone());
-                }
-            });
-            remove_vec.iter().for_each(|k| {
-                stream_tcp_tablestructure.remove(k).unwrap();
-            });
-        }
-
+        // 清除掉表的缓存
+        entity_lib::function::BufferObject::remove_table_cache(&table_name);
 
         let file_path = get_table_path(&table_name).await?;
         let data = bincode::serialize(&tablestruct)?;
         let mut file = File::create(file_path).await?;
         file.write_all(data.as_slice()).await?;
-        
+        return Ok(());
     }
 
-    Ok(())
+    
 }

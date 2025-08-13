@@ -54,10 +54,10 @@ async fn main() {
                 stream.write_i32(bytes_len as i32).await.unwrap();
                 stream.write_all(bytes).await.unwrap();
 
-                loop {
+                
                     let mess_len = stream.read_i32().await.unwrap();
                     if mess_len == -1 {
-                        break;
+                        println!("dql Execution successful")
                     }else if mess_len == -2 {
                         let len = stream.read_i32().await.unwrap();
 
@@ -71,33 +71,27 @@ async fn main() {
                         stream.read_exact(&mut table_structure).await.unwrap();
                         let ts_str = String::from_utf8(table_structure).unwrap();
                         
-                        println!("{}", ts_str)
-                        
+                        println!("{}", ts_str);
+                        println!("dql Execution successful")
                     }else if mess_len == -4 {
                         let offset_map_len = stream.read_i32().await.unwrap();
                         let mut offset_map_bytes = vec![0; offset_map_len as usize];
                         stream.read_exact(offset_map_bytes.as_mut_slice()).await.unwrap();
                         let offset_map = serde_json::from_slice::<HashMap<usize, i64>>(&offset_map_bytes).unwrap();
 
-                        println!("{:?}", offset_map)
-                        
+                        println!("{:?}", offset_map);
+                        println!("dql Execution successful")
                     } else {
                         let mut mess = vec![0; mess_len as usize];
                         stream.read_exact(&mut mess).await.unwrap();
-
-                        let mut decoder = Decoder::new();
-                        let message_bytes = decoder
-                            .decompress_vec(&mess)
-                            .unwrap_or_else(|e| panic!("解压失败: {}", e));
-
-                        let data_vec = serde_json::from_slice::<Vec<String>>(&message_bytes).unwrap();
+                        
+                        let data_vec = serde_json::from_slice::<Vec<String>>(&mess).unwrap();
                         for data in data_vec.iter() {
                             println!("||  {}",data);
                         }
-
-
                     }
-                }
+                
+                
             }
             ClientStatement::stream_read(stream_read) => {
 

@@ -1,22 +1,25 @@
-use crate::controls::metadata::get_metadata;
 use entity_lib::entity::Error::DataLakeError;
 use std::collections::HashMap;
 use entity_lib::entity::SlaveEntity::SlaveMessage;
 use entity_lib::function::PosttingTcpStream::DataLakeTcpStream;
+use entity_lib::function::table_structure::get_table_structure;
 
 pub async fn get_max_offset(table_name: &String) -> Result<HashMap<usize, i64>, DataLakeError> {
-    let mut table_structure = get_metadata(table_name).await?;
+    let mut table_structure = get_table_structure(table_name).await?;
 
     let partition_address = &mut table_structure.partition_address;
-
+    let table_name = &table_structure.table_name;
 
     
     let mut offset_map = HashMap::<usize, i64>::new();
     
-    for (code, vec_partition_info) in partition_address.iter_mut() {
+    for (code, vec_partition_info) in partition_address.iter() {
         let partition_code = format!("{}-{}",table_name, code);
         
-            let mut data_lake_tcpstream = DataLakeTcpStream::connect(vec_partition_info).await?;
+            let mut data_lake_tcpstream = DataLakeTcpStream::connect(
+                vec_partition_info.clone(),
+                table_name.clone(),
+                code.clone()).await?;
 
             let slave_message = SlaveMessage::max_offset(partition_code);
             let mut slave_message_bytes = bincode::serialize(&slave_message)?;
