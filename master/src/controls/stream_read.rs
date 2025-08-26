@@ -120,6 +120,8 @@ pub async fn stream_read_data(
                     }
                 }
             });
+        }else {
+            return Ok(None);
         }
     }
     let mut res_vec = Vec::<Vec<u8>>::new();

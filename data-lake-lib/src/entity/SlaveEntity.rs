@@ -4,6 +4,7 @@ use crate::function::vec_trait::VecPutVec;
 use memmap2::MmapMut;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::fs::File;
 use tokio::io::BufWriter;
 use crate::entity::bytes_reader::ArrayBytesReader;
@@ -63,12 +64,67 @@ pub struct ReplicaseSyncData {
 slave 缓存池 存储的 缓存结构
 **/
 //#[derive(Serialize, Deserialize, Debug)]
-pub struct SlaveCacheStruct {
-    pub data_file: File,
-    pub index_file: File,
-    pub metadata_file: File,
-    pub metadata_mmap: MmapMut,
+pub struct SlaveCacheStruct{
+    data_file: File,
+    index_file: File,
+    metadata_file: File,
+    metadata_mmap: MmapMut,
+    service_time: u128
 }
+
+impl SlaveCacheStruct{
+    
+    pub fn new(data_file: File, index_file: File, metadata_file: File, metadata_mmap: MmapMut)-> Self{
+        let timestamp_millis = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("Time went backwards")
+            .as_millis();
+        
+        let slave_cache_struct = SlaveCacheStruct {
+            data_file: data_file,
+            index_file: index_file,
+            metadata_file: metadata_file,
+            metadata_mmap: metadata_mmap,
+            service_time: timestamp_millis
+        };
+        
+        return slave_cache_struct;
+    }
+    
+    pub fn get_data_file(&mut self) -> &mut File{
+        let timestamp_millis = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("Time went backwards")
+            .as_millis();
+        self.service_time = timestamp_millis;
+        return &mut self.data_file;
+    }
+    pub fn get_index_file(&mut self) -> &mut File{
+        let timestamp_millis = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("Time went backwards")
+            .as_millis();
+        self.service_time = timestamp_millis;
+        return &mut self.index_file;
+    }
+    pub fn get_metadata_mmap(&mut self) -> &mut MmapMut{
+        
+        let timestamp_millis = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("Time went backwards")
+            .as_millis();
+        self.service_time = timestamp_millis;
+        
+        return &mut self.metadata_mmap;
+    }
+
+    pub fn get_service_time(&self) -> u128{
+        return self.service_time;
+    }
+    
+}
+
+
 
 /**
 index 的结构体

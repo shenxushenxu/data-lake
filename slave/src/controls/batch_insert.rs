@@ -19,7 +19,7 @@ use std::io::Write;
 use std::sync::Arc;
 use std::time::Instant;
 use tokio::fs::OpenOptions;
-use tokio::io::AsyncWriteExt;
+use tokio::io::{AsyncSeekExt, AsyncWriteExt};
 use tokio::sync::Mutex;
 use entity_lib::entity::DataLakeEntity::SlaveInsert;
 
@@ -102,7 +102,7 @@ pub async fn insert_operation<'a>(
         data_vec_len += x.1.len();
     });
 
-    let mut start_seek = slave_cache_struct.data_file.metadata().await?.len();
+    let mut start_seek = slave_cache_struct.get_data_file().stream_position().await?;
 
     let mut data_vec = Vec::<u8>::with_capacity(data_vec_len);
     let mut index_vec = Vec::<u8>::with_capacity(vec_data_structure.len() * INDEX_SIZE);
@@ -127,42 +127,38 @@ pub async fn insert_operation<'a>(
 
         index_vec.put_vec(&mut index_data);
 
-        offset_init = offset_init + 1;
+        offset_init += 1;
         start_seek = end_seek;
     }
 
 
-
-
-
-
     slave_cache_struct
-        .data_file
+        .get_data_file()
         .write_all(data_vec.as_slice())
         .await?;
     slave_cache_struct
-        .index_file
+        .get_index_file()
         .write_all(index_vec.as_slice())
         .await?;
 
 
     unsafe {
-        let dst_ptr = slave_cache_struct.metadata_mmap.as_mut_ptr();
+        let dst_ptr = slave_cache_struct.get_metadata_mmap().as_mut_ptr();
         let slice = offset_init.to_be_bytes();
         let src_ptr = slice.as_ptr();
-
         std::ptr::copy_nonoverlapping(src_ptr, dst_ptr, slice.len());
+        slave_cache_struct.get_metadata_mmap().flush()?;
     }
 
     let slave_file_segment_bytes = {
         let slave_config = SLAVE_CONFIG.lock().await;
         slave_config.slave_file_segment_bytes as u64
     };
-    let data_file_len = slave_cache_struct.data_file.metadata().await?.len();
+    let data_file_len = slave_cache_struct.get_data_file().stream_position().await?;;
 
     if data_file_len > slave_file_segment_bytes {
-        slave_cache_struct.data_file.flush().await?;
-        slave_cache_struct.index_file.flush().await?;
+        slave_cache_struct.get_data_file().flush().await?;
+        slave_cache_struct.get_index_file().flush().await?;
 
         return Ok(Some(file_key.clone()));
     }
@@ -186,13 +182,13 @@ async fn get_cache_file_object(
 
             let metadata_file_path = format!("{}/{}", partition_path, METADATA_LOG);
 
-            let mut metadata_file = OpenOptions::new()
+            let metadata_file = OpenOptions::new()
                 .read(true)
                 .write(true)
                 .create(true)
                 .open(metadata_file_path)
                 .await?;
-            let mut metadata_mmap = unsafe { MmapMut::map_mut(&metadata_file)? };
+            let metadata_mmap = unsafe { MmapMut::map_mut(&metadata_file)? };
 
             // 定义 offset 变量
             let offset_file_name = get_offset(None, file_key).await?;
@@ -206,24 +202,19 @@ async fn get_cache_file_object(
                 partition_path, LOG_FILE, offset_file_name, INDEX_FILE_EXTENSION
             );
 
-            let mut log_file = OpenOptions::new()
+            let log_file = OpenOptions::new()
                 .create(true)
                 .append(true)
                 .open(log_file_path)
                 .await?;
 
-            let mut index_file = OpenOptions::new()
+            let index_file = OpenOptions::new()
                 .create(true)
                 .append(true)
                 .open(index_file_path)
                 .await?;
 
-            let slave_cache_struct = SlaveCacheStruct {
-                data_file: log_file,
-                index_file: index_file,
-                metadata_file: metadata_file,
-                metadata_mmap: metadata_mmap,
-            };
+            let slave_cache_struct = SlaveCacheStruct::new(log_file, index_file, metadata_file, metadata_mmap);
 
             let ref_value = file_cache_pool
                 .entry(file_key.clone())

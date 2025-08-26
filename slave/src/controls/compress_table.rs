@@ -9,11 +9,34 @@ use uuid::Uuid;
 use entity_lib::entity::const_property::I32_BYTE_LEN;
 use entity_lib::function::{get_list_filename, SLAVE_CONFIG};
 use entity_lib::function::read_function::get_slave_path;
+use log::log;
 
 pub async fn compress_table(table_name: &String, uuid: &String) -> Result<(), DataLakeError> {
-    
-    
+
     let data_path = get_slave_path(table_name).await?;
+
+    let log_path = format!("{}/log", &data_path);
+    // 验证 log 下有几个文件，要是 <= 2 就不压缩了
+    let mut log_count = 0;
+    let mut entries = tokio::fs::read_dir(log_path).await?;
+    while let Some(folder_entry) = entries.next_entry().await? {
+        let folder_entry_path = folder_entry.path(); // 获取条目路径
+        if folder_entry_path.is_file() {
+            let file_name = folder_entry_path
+                .file_name()
+                .unwrap()
+                .to_str().unwrap();
+            if file_name.contains(entity_lib::entity::const_property::DATA_FILE_EXTENSION) {
+                log_count += 1;
+            }
+        }
+    }
+    if log_count <= 2 {
+        return Ok(());
+    }
+
+
+
     let compress_path = format!("{}/compress", data_path);
 
     let mut log_files = get_list_filename(&table_name).await;
@@ -61,6 +84,19 @@ pub async fn compress_table(table_name: &String, uuid: &String) -> Result<(), Da
     
     let (res_map, temp_file) = entity_lib::function::read_function::data_duplicate_removal(f_v, uuid).await?;
 
+    let mut sort_vec = Vec::<(usize, usize)>::with_capacity(res_map.len());
+
+    res_map.into_iter().for_each(|x3| {
+        let coordinate = x3.1;
+        sort_vec.push(coordinate);
+    });
+
+    sort_vec.sort_by_key(|x4| {
+       x4.0
+    });
+
+
+
     
     let temp_mmap = unsafe { Mmap::map(&temp_file) }?;
 
@@ -91,7 +127,7 @@ pub async fn compress_table(table_name: &String, uuid: &String) -> Result<(), Da
     let mut encoder = Encoder::new();
     let mut start_seek:u64 = 0;
     
-    for (_, (position, len)) in res_map.into_iter() {
+    for (position, len) in sort_vec.into_iter() {
         let data_bytes = &temp_mmap[position..(position + len)];
         let mut value = DataStructure::deserialize(data_bytes);
 

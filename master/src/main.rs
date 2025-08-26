@@ -7,7 +7,6 @@ use crate::controls::create::create_table;
 use crate::controls::drop_table::drop_table_operation;
 use crate::controls::max_offset::get_max_offset;
 use crate::controls::metadata::{get_table_metadata};
-use crate::controls::query::query_daql;
 use crate::controls::stream_read::{stream_read_data};
 use crate::mechanism::replicas::copy_sync_notif;
 use chrono::{Datelike, Timelike};
@@ -350,7 +349,7 @@ fn data_interface() -> JoinHandle<()> {
                                 });
                             }
 
-                            println!("{:?}", e);
+                            // println!("{:?}", e);
                             break;
                         }
                     }

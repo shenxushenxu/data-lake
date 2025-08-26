@@ -79,7 +79,9 @@ pub struct SlaveConfig {
     pub slave_data: Vec<String>,
     pub slave_file_segment_bytes: usize,
     pub slave_replicas_sync_num: usize,
+    pub slave_insert_cache_time_second: u64,
     pub data_path_index: usize,
+
 }
 
 impl SlaveConfig {
@@ -87,13 +89,15 @@ impl SlaveConfig {
         slave_node: String,
         slave_data: Vec<String>,
         slave_file_segment_bytes: usize,
-        slave_replicas_sync_num: usize
+        slave_replicas_sync_num: usize,
+        slave_insert_cache_time_second: u64,
     ) -> Self {
         SlaveConfig {
             slave_node: slave_node,
             slave_data: slave_data,
             slave_file_segment_bytes: slave_file_segment_bytes,
             slave_replicas_sync_num: slave_replicas_sync_num,
+            slave_insert_cache_time_second: slave_insert_cache_time_second,
             data_path_index: 0
         }
     }
@@ -125,7 +129,7 @@ pub static MASTER_CONFIG: LazyLock<Mutex<MasterConfig>> = LazyLock::new(|| {
 });
 
 pub static SLAVE_CONFIG: LazyLock<Mutex<SlaveConfig>> =
-    LazyLock::new(|| Mutex::new(SlaveConfig::new("".to_string(), vec!["".to_string()], 0,0)));
+    LazyLock::new(|| Mutex::new(SlaveConfig::new("".to_string(), vec!["".to_string()], 0,0, 0)));
 
 
 
@@ -216,7 +220,7 @@ pub async fn get_list_filename(partition_name: &str) -> Vec<(String, String)> {
 /**
 根据分区名称 获得分区在哪个路径下 并返回路径
 **/
-pub async fn get_partition_path(partition_code: &str) -> String {
+pub async fn get_partition_path(partition_code: &str) -> Result<String, DataLakeError> {
     let slave_data = {
         let slave_config = SLAVE_CONFIG.lock().await;
         let slave_data = &slave_config.slave_data;
@@ -231,13 +235,13 @@ pub async fn get_partition_path(partition_code: &str) -> String {
             if !folder_entry_path.is_file() {
                 let this_file_name = folder_entry_path.file_name().unwrap().to_str().unwrap();
                 if this_file_name == partition_code {
-                    return folder_entry_path.display().to_string();
+                    return Ok(folder_entry_path.display().to_string());
                 }
             }
         }
     }
 
-    panic!("Failed to get partition path: {}", partition_code);
+   return Err(DataLakeError::custom(format!("Failed to get partition path: {}", partition_code)));
 }
 
 /**

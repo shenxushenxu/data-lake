@@ -11,7 +11,7 @@ use entity_lib::function::MASTER_CONFIG;
 pub fn copy_sync_notif() -> JoinHandle<Result<(), DataLakeError>> {
     tokio::spawn(async move {
         loop {
-            let sync_notif = tokio::spawn(async move {
+            let table_sync = tokio::spawn(async move {
                 let data_path_vec = {
                     let master_config = MASTER_CONFIG.lock().await;
                     master_config.master_data_path.clone()
@@ -30,7 +30,7 @@ pub fn copy_sync_notif() -> JoinHandle<Result<(), DataLakeError>> {
                         }
                     }
                 }
-                let mut join_handle_set = tokio::task::JoinSet::new();
+
 
                 for table_path in table_path_vec {
                     let file = OpenOptions::new()
@@ -38,16 +38,17 @@ pub fn copy_sync_notif() -> JoinHandle<Result<(), DataLakeError>> {
                         .open(&table_path)
                         .await?;
 
-                    let table_structure = tokio::task::spawn_blocking(move || {
-                        let mmap = unsafe { Mmap::map(&file) }.unwrap();
-                        let metadata_message = &mmap[..];
-                        let table_structure = bincode::deserialize::<TableStructure>(metadata_message).unwrap();
 
-                        table_structure
-                    }).await.unwrap();
+                    let mmap = unsafe { Mmap::map(&file) }?;
+                    let metadata_message = &mmap[..];
+                    let table_structure = bincode::deserialize::<TableStructure>(metadata_message)?;
+
+
 
                     let par_address = table_structure.partition_address;
                     let table_name = table_structure.table_name;
+
+                    let mut join_handle_set = tokio::task::JoinSet::new();
 
                     for (code, partition_info_vec) in par_address {
                         let slave_parti_name = format!("{}-{}", table_name, code);
@@ -104,26 +105,23 @@ pub fn copy_sync_notif() -> JoinHandle<Result<(), DataLakeError>> {
                             }
                         }
                     }
-                }
-
-                while let Some(res) = join_handle_set.join_next().await {
-                    if let Err(e) = res {
-                        return Err(DataLakeError::custom(format!("{:?}", e)));
+                    while let Some(res) = join_handle_set.join_next().await {
+                        if let Err(e) = res {
+                            return Err(DataLakeError::custom(format!("同步数据  Error: {:?}", e)));
+                        }
                     }
                 }
-                Ok(())
+                return Ok(());
             });
 
-            match sync_notif.await{
-                Ok(datalakeerror) => {
-                    if let Err(e) = datalakeerror {
-                        println!("Err: {}", e);
-                    }
-                }
-                Err(e) => {
-                    println!("Err: {}", e);
-                }
-            };
+            match table_sync.await {
+                Ok(_) => {}
+                Err(_) => {}
+            }
+
+
+
+
         }
     })
 }

@@ -11,7 +11,7 @@ use crate::controls::stream_read::stream_read;
 use crate::mechanism::replicas::{Leader_replicas_sync, follower_replicas_sync};
 use chrono::{Datelike, Timelike};
 use entity_lib::entity::SlaveEntity::SlaveMessage;
-use std::time::Instant;
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
 use tokio::task::JoinHandle;
@@ -42,7 +42,10 @@ async fn main() {
         let slave_node = map.get("slave.node").unwrap().clone();
         let slave_data = map.get("slave.data").unwrap().clone();
         let slave_file_segment_bytes = map.get("slave.file.segment.mb").unwrap().clone();
-        let slave_replicas_sync_num = map.get("slave.replicas.sync.num").unwrap().clone();
+        let slave_replicas_sync_num = map.get("slave.replicas.sync.number").unwrap().clone();
+        let slave_insert_cache_time_second = map.get("slave.insert.cache.time.second").unwrap().clone();
+
+
         let slave_data_vec = slave_data
             .split(",")
             .map(|x| x.trim().to_string())
@@ -50,6 +53,8 @@ async fn main() {
 
         let slave_file_segment_bytes = slave_file_segment_bytes.parse::<usize>().unwrap() * 1048576;
         let slave_replicas_sync_num = slave_replicas_sync_num.parse::<usize>().unwrap();
+        let slave_insert_cache_time_second = slave_insert_cache_time_second.parse::<u64>().unwrap();
+
 
         let mut slave_config = SLAVE_CONFIG.lock().await;
         unsafe {
@@ -58,6 +63,7 @@ async fn main() {
                 slave_data_vec,
                 slave_file_segment_bytes,
                 slave_replicas_sync_num,
+                slave_insert_cache_time_second,
             );
         }
     }
@@ -66,9 +72,55 @@ async fn main() {
     env_logger::init();
 
     let slave = data_read_write();
+    let regular_cleaning = regular_cleaning_file_cache();
     println!("slave  启动成功.......");
-    tokio::join!(slave);
+    tokio::join!(slave, regular_cleaning);
 }
+
+/**
+定时清理 批量插入缓存的 分区文件对象
+**/
+fn regular_cleaning_file_cache() -> JoinHandle<()>{
+    let join_handle = tokio::spawn(async move{
+        loop {
+            let slave_insert_cache_time_second = {
+                let slave_config = SLAVE_CONFIG.lock().await;
+                let slave_data = &slave_config.slave_insert_cache_time_second;
+                slave_data.clone()
+            };
+
+            tokio::time::sleep(Duration::from_secs(slave_insert_cache_time_second)).await;
+
+            let timestamp_millis = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("Time went backwards")
+                .as_millis();
+
+            let file_cache_pool = Arc::clone(&FILE_CACHE_POOL);
+            let mut remove_key = Vec::<String>::new();
+            file_cache_pool.iter().for_each(|x| {
+                let value = Arc::clone(x.value());
+                if let Ok(mutex_guard) = value.try_lock(){
+                    let slave_time = mutex_guard.get_service_time();
+                    if slave_time > (timestamp_millis - (slave_insert_cache_time_second as u128)) {
+                        let key = x.key();
+                        remove_key.push(key.clone());
+                    }
+                }
+            });
+
+            for key in remove_key {
+                file_cache_pool.remove(&key);
+            }
+
+
+        }
+    });
+    return join_handle;
+}
+
+
+
 
 /**
 请求分类
@@ -273,13 +325,9 @@ fn data_read_write() -> JoinHandle<()> {
                                     Err(_) => {}
                                 }
                             }
-
-                            let file_cache_pool = Arc::clone(&FILE_CACHE_POOL);
-                            
-                            file_cache_pool.clear();
                             
 
-                            println!("master 与 slave 的连接断开了:  {}", e);
+                            // println!("master 与 slave 的连接断开了:  {}", e);
                             break;
                         }
                     }

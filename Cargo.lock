@@ -730,6 +730,7 @@ dependencies = [
  "chrono",
  "entity_lib",
  "env_logger",
+ "log",
  "memmap2",
  "mimalloc",
  "rayon",

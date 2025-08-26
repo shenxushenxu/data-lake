@@ -1,22 +1,21 @@
-use tokio::io::AsyncWriteExt;
-use tokio::net::TcpStream;
-use tokio::task::JoinSet;
 use entity_lib::entity::Error::DataLakeError;
 use entity_lib::entity::SlaveEntity::SlaveMessage;
 use entity_lib::function::table_structure::get_table_structure;
+use tokio::io::AsyncWriteExt;
+use tokio::net::TcpStream;
+use tokio::task::JoinSet;
 
 pub async fn compress_table(table_name: &String) -> Result<(), DataLakeError> {
-
-    let table_structure =
-        get_table_structure(&table_name).await?;
+    let table_structure = get_table_structure(&table_name).await?;
 
     let address_map = table_structure.partition_address.clone();
 
-    let mut join_handle_set:JoinSet<Result<(), DataLakeError>> = tokio::task::JoinSet::new();
-    
+
+    let mut join_handle_set: JoinSet<Result<(), DataLakeError>> = tokio::task::JoinSet::new();
+
     for (key,partition_info_vec) in address_map {
 
-        
+
         for partition_info in partition_info_vec.into_iter() {
             let partition_code = format!("{}-{}", table_name, key);
 
@@ -35,19 +34,18 @@ pub async fn compress_table(table_name: &String) -> Result<(), DataLakeError> {
                 stream.write_all(&bytes).await?;
 
                 entity_lib::function::read_error(&mut stream).await?;
-                
+
                 Ok(())
             });
-            
+
         }
     }
-
 
     while let Some(res) = join_handle_set.join_next().await {
         match res {
             Ok(ee) => {
                 if let Err(e) = ee {
-                    
+
                     return Err(e);
                 }
             }
@@ -57,7 +55,6 @@ pub async fn compress_table(table_name: &String) -> Result<(), DataLakeError> {
             }
         }
     }
-    
-    
+
     return Ok(());
 }

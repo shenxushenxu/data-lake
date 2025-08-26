@@ -50,11 +50,9 @@ pub async fn data_duplicate_removal(file_vec: Vec<String>, uuid:&String) -> Resu
         loop {
             let mut message_len_bytes = vec![0u8; I32_BYTE_LEN];
             match file.read_exact(message_len_bytes.as_mut_slice()).await {
-                Ok(read_message_len) => {
+                Ok(_) => {
 
                     let message_len = i32::from_le_bytes(message_len_bytes.try_into().unwrap());
-                    
-                    
                     
                     let mut message = vec![0u8; message_len as usize];
 
@@ -81,7 +79,7 @@ pub async fn data_duplicate_removal(file_vec: Vec<String>, uuid:&String) -> Resu
 
                                 let map_data_offset = data.offset;
                                 if offset > map_data_offset {
-                                    let data_position = temp_file.seek(SeekFrom::End(0)).await?;
+                                    let data_position = temp_file.stream_position().await?;;
                                     let data_bytes = data_structure.serialize()?;
                                     let data_len = data_bytes.len();
 
@@ -107,7 +105,7 @@ pub async fn data_duplicate_removal(file_vec: Vec<String>, uuid:&String) -> Resu
                         None => match crud_type {
                             const_property::CURD_INSERT => {
 
-                                let data_position = temp_file.seek(SeekFrom::End(0)).await?;
+                                let data_position = temp_file.stream_position().await?;;
                                 let data_bytes = data_structure.serialize()?;
                                 let data_len = data_bytes.len();
                                 temp_file.write_all(data_bytes.as_slice()).await?;

@@ -9,6 +9,7 @@ use std::time::Instant;
 use tokio::fs::OpenOptions;
 use entity_lib::entity::bytes_reader::ArrayBytesReader;
 use entity_lib::function::data_complete;
+use crate::controls;
 
 #[tokio::test]
 pub async fn eeee() {}
@@ -16,6 +17,20 @@ pub async fn eeee() {}
 pub async fn stream_read(
     streamreadstruct: &StreamReadStruct,
 ) -> Result<Option<Vec<u8>>, DataLakeError> {
+
+    // 判断传输过来的offset 是否 小于最大offset
+    let offset = &streamreadstruct.offset;
+    let code = &streamreadstruct.partition_code;
+    let table_name = &streamreadstruct.table_name;
+    let partition_code = format!("{}-{}",table_name, code);
+    let max_offset = controls::max_offset::get_max_offset(&partition_code).await?;
+
+    if offset >= &max_offset {
+        return Ok(None);
+    }
+
+
+
     let stream_return = data_read(streamreadstruct).await;
     let col_type = &streamreadstruct.table_col_type;
     match stream_return {

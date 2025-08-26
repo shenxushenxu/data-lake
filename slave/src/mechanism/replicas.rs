@@ -11,6 +11,7 @@ use tokio::fs::OpenOptions;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use entity_lib::function::{get_partition_path, SLAVE_CONFIG};
+use crate::controls;
 
 /**
 Follower副本 同步  Leader副本的数据
@@ -21,7 +22,7 @@ pub async fn follower_replicas_sync(
     let leader_address = &replicas_sync_struct.leader_address;
     let slave_parti_name = &replicas_sync_struct.slave_parti_name;
 
-    let partition_path = get_partition_path(slave_parti_name).await;
+    let partition_path = get_partition_path(slave_parti_name).await?;
     let metadata_file_path = format!("{}/metadata.log", partition_path);
     let metadata_file = OpenOptions::new()
         .write(true)
@@ -30,7 +31,7 @@ pub async fn follower_replicas_sync(
         .await?;
 
     let mut metadata_mmap = unsafe { MmapMut::map_mut(&metadata_file)? };
-    let file_end_offset = i64::from_be_bytes((&metadata_mmap[..]).try_into().unwrap());
+    let file_end_offset = i64::from_be_bytes((&metadata_mmap[..]).try_into()?);
 
     let sync_message = SyncMessage {
         offset: file_end_offset,
@@ -72,10 +73,12 @@ pub async fn follower_replicas_sync(
             .open(new_log_file_path)
             .await?;
 
-        index_file.write_all(offset_set.as_slice()).await?;
         log_file.write_all(data_set.as_slice()).await?;
-        index_file.flush().await?;
+        index_file.write_all(offset_set.as_slice()).await?;
         log_file.flush().await?;
+        index_file.flush().await?;
+
+
         unsafe {
             let offset_set_len = offset_set.len();
             let return_end_offset = &offset_set[(offset_set_len - INDEX_SIZE)..offset_set_len];
@@ -88,7 +91,10 @@ pub async fn follower_replicas_sync(
             let src_ptr = slice.as_ptr();
 
             std::ptr::copy_nonoverlapping(src_ptr, dst_ptr, slice.len());
+            metadata_mmap.flush()?;
         }
+
+
     } else if return_mess_len == -2 {
         let len = tcp_stream.read_i32().await?;
 
@@ -109,6 +115,14 @@ pub async fn Leader_replicas_sync(
 ) -> Result<Option<ReplicaseSyncData>, DataLakeError> {
     let offset = sync_message.offset;
     let partition_code = &sync_message.partition_code;
+
+    let max_offset = controls::max_offset::get_max_offset(partition_code).await?;
+
+    if offset >= max_offset {
+        return Ok(None);
+    }
+
+
 
     let mut log_files = entity_lib::function::get_list_filename(&partition_code).await;
 
@@ -137,7 +151,7 @@ pub async fn Leader_replicas_sync(
 
     let option_this_offset_file = binary_search(&file_vec, offset).await?;
 
-    if let Some((index_name, this_offset_file)) = option_this_offset_file {
+    if let Some((index_name, this_offset_file_path)) = option_this_offset_file {
         let slave_replicas_sync_num = {
             let slave_config = SLAVE_CONFIG.lock().await;
             let slave_replicas_sync_num = slave_config.slave_replicas_sync_num;
@@ -145,7 +159,7 @@ pub async fn Leader_replicas_sync(
         };
 
         let (index_path, _, _, start_seek) =
-            stream_read::find_data(index_name, this_offset_file, offset, slave_replicas_sync_num)
+            stream_read::find_data(index_name, this_offset_file_path, offset, slave_replicas_sync_num)
                 .await?;
         
         let replicasesyncdata = load_data(index_path, start_seek, slave_replicas_sync_num).await?;
@@ -154,6 +168,9 @@ pub async fn Leader_replicas_sync(
 
     return Ok(None);
 }
+
+
+
 
 async fn load_data(
     index_path: &String,

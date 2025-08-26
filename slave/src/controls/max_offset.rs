@@ -7,7 +7,7 @@ use entity_lib::function::get_partition_path;
 
 pub async fn get_max_offset(partition_code: &String) -> Result<i64, DataLakeError> {
 
-    let path = get_partition_path(partition_code).await;
+    let path = get_partition_path(partition_code).await?;
     let metadata_path = format!("{}/{}",path, METADATA_LOG);
 
     let metadata_file = OpenOptions::new()

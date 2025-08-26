@@ -16,3 +16,4 @@ mimalloc = {workspace = true}
 ahash = {workspace = true}
 
 entity_lib = {path = "../data-lake-lib" }
+log = "0.4.26"
