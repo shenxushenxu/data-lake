@@ -1,5 +1,5 @@
-mod controls;
-mod mechanism;
+pub mod controls;
+pub mod mechanism;
 
 use crate::controls::alter::{alter_add, alter_orop};
 use crate::controls::compress_table::compress_table;
@@ -17,6 +17,8 @@ use snap::raw::Decoder;
 use std::any::Any;
 use std::sync::Arc;
 use std::time::Instant;
+use log::info;
+use simple_logger::SimpleLogger;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
 use tokio::task::JoinHandle;
@@ -36,7 +38,7 @@ static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 async fn main() {
     {
         let args: Vec<String> = std::env::args().collect();
-        println!("{:?}", args);
+        info!("{:?}", args);
         let file_path = args.get(1).unwrap();
 
         let map = load_properties(file_path);
@@ -61,7 +63,7 @@ async fn main() {
     }
 
     // 初始化日志系统
-    env_logger::init();
+    SimpleLogger::new().with_utc_timestamps().init().unwrap();
 
     let master_main = data_interface();
     let replicas_sync = copy_sync_notif();
@@ -348,8 +350,8 @@ fn data_interface() -> JoinHandle<()> {
                                     stream_tcp_tablestructure.remove(k).unwrap();
                                 });
                             }
-
-                            // println!("{:?}", e);
+                            let addr = read.peer_addr().unwrap().to_string();
+                            info!("{}  {}  {} : 断开连接  {:?}", file!(), line!(), addr, e);
                             break;
                         }
                     }

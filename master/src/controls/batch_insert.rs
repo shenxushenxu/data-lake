@@ -3,15 +3,13 @@ use entity_lib::entity::Error::DataLakeError;
 use entity_lib::entity::SlaveEntity::SlaveMessage;
 use rayon::prelude::*;
 use std::collections::HashMap;
-use std::panic::Location;
 use std::sync::Arc;
-use std::time::Instant;
-use chrono::{DateTime, Utc};
+use log::error;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::net::TcpStream;
 use tokio::sync::{Mutex};
 use entity_lib::entity::const_property;
 use entity_lib::function::BufferObject::INSERT_TCPSTREAM_CACHE_POOL;
-use entity_lib::function::PosttingTcpStream::DataLakeTcpStream;
 use entity_lib::function::string_trait::StringFunction;
 use entity_lib::function::table_structure::get_table_structure;
 
@@ -115,7 +113,7 @@ pub async fn batch_insert_data<'a>(
 
                     
                     let mut partition_address = table_structure_clone.partition_address.clone();
-                    let tcp_key = format!("{}-{}", uuid_clone.as_ref(), partition_code);
+                    let tcp_key = format!("{}-{}-{}", uuid_clone.as_ref(), table_name_clone, partition_code);
 
                     let is = { insert_tcpstream_cache_pool.contains_key(&tcp_key) };
 
@@ -129,9 +127,13 @@ pub async fn batch_insert_data<'a>(
                                 .get(&(partition_code as usize))
                                 .unwrap();
 
-                            let stream = DataLakeTcpStream::connect(partition_info_vec.clone(),
-                                                                    table_name.to_string(),
-                                                                    partition_code as usize).await?;
+                            // 获得 活跃分区的 address
+                            let leader_address = entity_lib::function::get_leader_partition(
+                                &table_name_clone,
+                                &partition_info_vec,
+                            )?;
+                            let stream = TcpStream::connect(leader_address).await?;
+                            
 
                             let ref_tcp = insert_tcpstream_cache_pool
                                 .entry(tcp_key.clone())
@@ -186,7 +188,7 @@ pub async fn batch_insert_data<'a>(
                         }
                     }
                     Err(e) => {
-                        eprintln!("Task failed: {:?}", e);
+                        error!("{}  {}  Task failed: {:?}",file!(), line!(), e);
                         unsafe {
                             Box::from_raw(message_leak);
                             Box::from_raw(batch_data_leak);

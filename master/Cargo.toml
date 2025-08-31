@@ -15,7 +15,8 @@ rayon = {workspace = true}
 chrono = {workspace = true}
 dashmap = { workspace = true }
 mimalloc = {workspace = true}
-
+simple_logger = {workspace = true}
+log = {workspace = true}
 
 entity_lib = {path = "../data-lake-lib" }
 daql_analysis = {path = "../daql_analysis"}

@@ -6,7 +6,9 @@ use rayon::prelude::*;
 use snap::raw::{Decoder, Encoder};
 use std::panic::Location;
 use std::time::Instant;
+use log::warn;
 use tokio::fs::OpenOptions;
+use tokio::io::AsyncSeekExt;
 use entity_lib::entity::bytes_reader::ArrayBytesReader;
 use entity_lib::function::data_complete;
 use crate::controls;
@@ -185,14 +187,14 @@ pub async fn data_read(
 
     let offset = streamreadstruct.offset;
     let read_count = streamreadstruct.read_count;
-    let option_index_path = binary_search(&file_vec, offset).await?;
+    let option_index_path = binary_search(&file_vec, offset, "stream_read").await?;
 
     match option_index_path {
         None => {
             return Ok(None);
         }
         Some((index_name, index_path)) => {
-            let (index_path, start_index, end_index,_) = find_data(index_name, index_path, offset, read_count).await?;
+            let (index_path, start_index, end_index,_) = find_data(index_name, index_path, offset, read_count,"stream_read").await?;
             let stream_data = load_data(index_path, &start_index, &end_index).await?;
             return Ok(Some(stream_data));
         }
@@ -203,17 +205,27 @@ pub async fn data_read(
 pub async fn binary_search<'a>(
     file_vec: &'a Vec<&(String, String)>,
     offset: i64,
+    sign: &str,
 ) -> Result<Option<(&'a String, &'a String)>, DataLakeError> {
-    for index in 0..file_vec.len() {
-        let (index_name, this_index_path) = file_vec[index];
+    for (index_name, this_index_path) in file_vec {
 
-        let index_file = OpenOptions::new().read(true).open(this_index_path).await?;
+        let mut index_file = OpenOptions::new().read(true).open(this_index_path).await?;
 
-        let index_mmap = unsafe { Mmap::map(&index_file)? };
+        let mut index_mmap = unsafe { Mmap::map(&index_file)? };
 
-        let mmap_len = index_mmap.len();
-        if mmap_len > INDEX_SIZE {
-            let index_bytes = &index_mmap[(mmap_len - INDEX_SIZE)..mmap_len];
+        let mut index_len = index_mmap.len();
+        if index_len > INDEX_SIZE {
+            let index_bytes = loop{
+                if index_len % INDEX_SIZE == 0 {
+                    break &index_mmap[(index_len - INDEX_SIZE)..index_len];
+                }else {
+                    warn!("{}  {}  {} : index file  index_file_len % INDEX_SIZE != 0", sign, file!(), line!());
+
+                    index_file = OpenOptions::new().read(true).open(this_index_path).await?;
+                    index_mmap = unsafe { Mmap::map(&index_file)?};
+                    index_len = index_mmap.len();
+                }
+            };
 
             let Index_struct = bincode::deserialize::<IndexStruct>(index_bytes)?;
             let file_end_offset = Index_struct.offset;
@@ -234,19 +246,31 @@ pub async fn find_data<'a>(
     index_path: &'a String,
     offset: i64,
     read_count: usize,
+    sign: &str,
 ) -> Result<(&'a String, Option<IndexStruct>, IndexStruct, usize), DataLakeError> {
     let code = index_name.replace(".index", "").parse::<i64>()?;
 
-    let index_file = OpenOptions::new().read(true).open(index_path).await?;
+    let mut index_file = OpenOptions::new().read(true).open(index_path).await?;
 
-    let index_mmap = unsafe { Mmap::map(&index_file)? };
+    let mut index_mmap = unsafe { Mmap::map(&index_file)? };
     let mut start_index: Option<IndexStruct> = None;
     let mut start_seek: usize = 0;
-    let index_file_len = index_mmap.len();
+    let mut index_file_len = index_mmap.len();
 
     if offset >= code {
         let mut left = 0;
-        let mut right = (index_file_len / INDEX_SIZE) - 1;
+
+        let mut right = loop {
+            if index_file_len % INDEX_SIZE == 0 {
+                break (index_file_len / INDEX_SIZE) - 1;
+            }else {
+                println!("{} {}  {}: index file  index_file_len % INDEX_SIZE != 0", sign, file!(), line!());
+                index_file = OpenOptions::new().read(true).open(index_path).await?;
+                index_mmap = unsafe { Mmap::map(&index_file)? };
+                index_file_len = index_mmap.len();
+            }
+        };
+
         while left <= right {
             let mid = left + ((right - left) / 2);
             start_seek = mid * INDEX_SIZE;
@@ -275,11 +299,10 @@ pub async fn find_data<'a>(
     let mut end_seek = start_seek + (read_count * INDEX_SIZE);
 
     if end_seek > index_file_len {
-        // 如果结尾的offset位置超出索引文件的大小
-        end_seek = index_file_len - INDEX_SIZE;
+        // 如果结尾的offset位置超出索引文件的大小  那就获得索引文件内最后一个 offset
 
-        // 获得结尾的 offset
-        let bytes_end = &index_mmap[end_seek..end_seek + INDEX_SIZE];
+        let bytes_end = &index_mmap[(index_file_len - INDEX_SIZE)..index_file_len];
+
         let end_index = bincode::deserialize::<IndexStruct>(bytes_end)?;
 
         return Ok((index_path, start_index, end_index, start_seek));
@@ -318,8 +341,6 @@ async fn load_data(
 
     let read_data = &data_mmap[start_file_seek..end_file_seek];
 
-    let bb = read_data[..4].try_into()?;
-    let cc = i32::from_be_bytes(bb);
 
     return Ok(read_data.to_vec());
 }

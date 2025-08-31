@@ -3,7 +3,7 @@ use memmap2::Mmap;
 use tokio::fs::OpenOptions;
 use crate::entity::Error::DataLakeError;
 use crate::entity::MasterEntity::TableStructure;
-use crate::function::MASTER_CONFIG;
+use crate::function::{check_file_exists, MASTER_CONFIG};
 
 pub async fn get_table_structure(table_name: &str) -> Result<TableStructure, DataLakeError> {
 
@@ -27,8 +27,7 @@ pub async fn get_table_path(table_name: &str) -> Result<String, DataLakeError> {
     for data_path in data_path_vec {
         let file_path = format!("{}/{}", data_path, table_name);
 
-        let path = Path::new(&file_path);
-        if path.exists() {
+        if check_file_exists(&file_path) {
             return Ok(file_path);
         }
     }

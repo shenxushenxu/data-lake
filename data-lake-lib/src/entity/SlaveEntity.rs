@@ -51,6 +51,7 @@ pub struct SyncMessage {
 pub struct ReplicasSyncStruct {
     pub slave_parti_name: String,
     pub leader_address: String,
+    pub leader_partition_max_offset: i64,
 }
 
 #[derive(Serialize, Deserialize, Debug)]

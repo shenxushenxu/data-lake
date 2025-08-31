@@ -15,7 +15,7 @@ use memmap2::MmapMut;
 use rayon::prelude::*;
 use snap::raw::Encoder;
 use std::collections::HashMap;
-use std::io::Write;
+use std::io::{SeekFrom, Write};
 use std::sync::Arc;
 use std::time::Instant;
 use tokio::fs::OpenOptions;
@@ -144,7 +144,7 @@ pub async fn insert_operation<'a>(
 
     unsafe {
         let dst_ptr = slave_cache_struct.get_metadata_mmap().as_mut_ptr();
-        let slice = offset_init.to_be_bytes();
+        let slice = offset_init.to_le_bytes();
         let src_ptr = slice.as_ptr();
         std::ptr::copy_nonoverlapping(src_ptr, dst_ptr, slice.len());
         slave_cache_struct.get_metadata_mmap().flush()?;
@@ -214,6 +214,7 @@ async fn get_cache_file_object(
                 .open(index_file_path)
                 .await?;
 
+
             let slave_cache_struct = SlaveCacheStruct::new(log_file, index_file, metadata_file, metadata_mmap);
 
             let ref_value = file_cache_pool
@@ -252,7 +253,7 @@ async fn get_offset(
                 .await?;
             let mut metadata_mmap = unsafe { MmapMut::map_mut(&metadata_file)? };
 
-            i64::from_be_bytes((&metadata_mmap[..]).try_into().unwrap())
+            i64::from_le_bytes((&metadata_mmap[..]).try_into()?)
         }
     };
 

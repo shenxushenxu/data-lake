@@ -1,18 +1,13 @@
-use dashmap::DashMap;
 use entity_lib::entity::Error::DataLakeError;
 use entity_lib::entity::MasterEntity::{
-    Info, MasterStreamRead, Parti, PartitionInfo, TableStructure,
+    MasterStreamRead, Parti
 };
 use entity_lib::entity::SlaveEntity::{SlaveMessage, StreamReadStruct};
 use entity_lib::function::BufferObject::STREAM_TCP_TABLESTRUCTURE;
-use std::collections::HashMap;
-use std::sync::{Arc, LazyLock};
+use std::sync::Arc;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tokio::sync::Mutex;
-use tokio::sync::mpsc::Receiver;
-use tokio::task::JoinError;
-use entity_lib::function::PosttingTcpStream::DataLakeTcpStream;
 use entity_lib::function::table_structure::get_table_structure;
 
 pub async fn stream_read_data(
@@ -58,10 +53,12 @@ pub async fn stream_read_data(
                 let ref_mutex = match stream_tcp_tablestructure.contains_key(&map_key) {
                     true => Arc::clone(stream_tcp_tablestructure.get(&map_key).unwrap().value()),
                     false => {
-                        
-                        let stream = DataLakeTcpStream::connect(partition_info_vec_clone,
-                                                                arc_ta_name.as_ref().clone(),
-                                                                partition_code).await?;
+
+                        let leader_address = entity_lib::function::get_leader_partition(
+                            &table_name_clone,
+                            &partition_info_vec_clone,
+                        )?;
+                        let stream = TcpStream::connect(leader_address).await?;
                         
                         let tablestructure = get_table_structure(arc_ta_name.as_ref()).await?;
 

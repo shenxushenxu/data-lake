@@ -4,12 +4,12 @@ use std::io::SeekFrom;
 use std::path::Path;
 use memmap2::Mmap;
 use tokio::fs::{File, OpenOptions};
-use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
+use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt, BufWriter};
 use crate::entity::const_property;
 use crate::entity::const_property::I32_BYTE_LEN;
 use crate::entity::Error::DataLakeError;
 use crate::entity::SlaveEntity::DataStructure;
-use crate::function::SLAVE_CONFIG;
+use crate::function::{check_file_exists, SLAVE_CONFIG};
 
 pub async fn data_duplicate_removal(file_vec: Vec<String>, uuid:&String) -> Result<(HashMap<String, (usize, usize)>, File), DataLakeError> {
     
@@ -24,14 +24,12 @@ pub async fn data_duplicate_removal(file_vec: Vec<String>, uuid:&String) -> Resu
     };
     
     
-    // let uuid = Uuid::new_v4().to_string();
     let temp_path = format!(
         "{}/{}",
         slave_data,
         "temp"
     );
-    let path = Path::new(&temp_path);
-    if !path.exists() {
+    if !check_file_exists(&temp_path) {
         tokio::fs::create_dir(&temp_path).await?;
     }
 
@@ -41,6 +39,7 @@ pub async fn data_duplicate_removal(file_vec: Vec<String>, uuid:&String) -> Resu
         .append(true)
         .open(format!("{}/{}",&temp_path, uuid))
         .await?;
+
 
     let mut decoder = Decoder::new();
     
@@ -150,8 +149,8 @@ pub async fn get_slave_path(table_name: &String) -> Result<String, DataLakeError
         
         let file_path = format!("{}/{}", data_path, table_name);
         
-        let path = Path::new(&file_path);
-        if path.exists() {
+
+        if check_file_exists(&file_path) {
             return Ok(file_path);
         }
     }

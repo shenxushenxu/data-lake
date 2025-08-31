@@ -2,7 +2,6 @@ use entity_lib::entity::Error::DataLakeError;
 use tokio::fs::{File};
 use tokio::io::AsyncWriteExt;
 use entity_lib::entity::MasterEntity::{ColumnConfigJudgment, DataType};
-use entity_lib::function::BufferObject::STREAM_TCP_TABLESTRUCTURE;
 use entity_lib::function::table_structure::{get_table_path, get_table_structure};
 
 pub async fn alter_orop(alteradd: (String, String)) -> Result<(), DataLakeError> {
@@ -26,12 +25,14 @@ pub async fn alter_orop(alteradd: (String, String)) -> Result<(), DataLakeError>
 
         let data = bincode::serialize(&tablestruct)?;
 
-        // 清除掉表的缓存
-        entity_lib::function::BufferObject::remove_table_cache(&table_name);
         
         let file_path = get_table_path(&table_name).await?;
         let mut file = File::create(file_path).await?;
         file.write_all(data.as_slice()).await?;
+        file.flush().await?;
+        // 清除掉表的缓存
+        entity_lib::function::BufferObject::remove_table_cache(&table_name);
+        
         return Ok(());
 
     } else {
@@ -108,13 +109,15 @@ pub async fn alter_add(
         col_type.insert(col_name.to_string(), (data_type, column_config.0, column_config.1));
         tablestruct.col_type = col_type;
         
-        // 清除掉表的缓存
-        entity_lib::function::BufferObject::remove_table_cache(&table_name);
-
+        
         let file_path = get_table_path(&table_name).await?;
         let data = bincode::serialize(&tablestruct)?;
         let mut file = File::create(file_path).await?;
         file.write_all(data.as_slice()).await?;
+        file.flush().await?;
+        // 清除掉表的缓存
+        entity_lib::function::BufferObject::remove_table_cache(&table_name);
+        
         return Ok(());
     }
 

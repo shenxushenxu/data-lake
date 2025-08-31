@@ -17,7 +17,7 @@ pub async fn get_max_offset(partition_code: &String) -> Result<i64, DataLakeErro
     let metadata_mmap = unsafe {Mmap::map(&metadata_file)?};
     
     // 因为 metadata.log 文件存储的最大 offset 是 数据中最大offset + 1 所以这里 - 1
-    let max_offset = i64::from_be_bytes((&metadata_mmap[..]).try_into().unwrap());
+    let max_offset = i64::from_le_bytes((&metadata_mmap[..]).try_into()?);
     let res_offset = max_offset - 1;
     return Ok(res_offset);
 }

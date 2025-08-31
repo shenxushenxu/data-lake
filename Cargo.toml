@@ -17,3 +17,5 @@ rayon = "1.10.0"
 dashmap = "6.1.0"
 mimalloc = { version = "0.1.47"}
 ahash = "0.8.12"
+simple_logger = "5.0.0"
+log = "0.4.27"

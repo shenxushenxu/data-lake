@@ -1,5 +1,4 @@
 pub mod BufferObject;
-pub mod PosttingTcpStream;
 pub mod RandomNumber;
 pub mod read_function;
 pub mod string_trait;
@@ -16,7 +15,7 @@ use tokio::net::TcpStream;
 use tokio::sync::Mutex;
 use crate::entity::const_property;
 use crate::entity::Error::DataLakeError;
-use crate::entity::MasterEntity::{ColumnConfigJudgment, DataType};
+use crate::entity::MasterEntity::{ColumnConfigJudgment, DataType, Info, PartitionInfo};
 
 pub struct MasterConfig {
     pub master_data_port: String,
@@ -80,7 +79,9 @@ pub struct SlaveConfig {
     pub slave_file_segment_bytes: usize,
     pub slave_replicas_sync_num: usize,
     pub slave_insert_cache_time_second: u64,
+    pub slave_compaction_log_retain_number: i32,
     pub data_path_index: usize,
+
 
 }
 
@@ -91,6 +92,7 @@ impl SlaveConfig {
         slave_file_segment_bytes: usize,
         slave_replicas_sync_num: usize,
         slave_insert_cache_time_second: u64,
+        slave_compaction_log_retain_number: i32
     ) -> Self {
         SlaveConfig {
             slave_node: slave_node,
@@ -98,6 +100,7 @@ impl SlaveConfig {
             slave_file_segment_bytes: slave_file_segment_bytes,
             slave_replicas_sync_num: slave_replicas_sync_num,
             slave_insert_cache_time_second: slave_insert_cache_time_second,
+            slave_compaction_log_retain_number: slave_compaction_log_retain_number,
             data_path_index: 0
         }
     }
@@ -129,7 +132,7 @@ pub static MASTER_CONFIG: LazyLock<Mutex<MasterConfig>> = LazyLock::new(|| {
 });
 
 pub static SLAVE_CONFIG: LazyLock<Mutex<SlaveConfig>> =
-    LazyLock::new(|| Mutex::new(SlaveConfig::new("".to_string(), vec!["".to_string()], 0,0, 0)));
+    LazyLock::new(|| Mutex::new(SlaveConfig::new("".to_string(), vec!["".to_string()], 0,0, 0,0)));
 
 
 
@@ -174,8 +177,7 @@ pub async fn get_list_filename(partition_name: &str) -> Vec<(String, String)> {
         .iter()
         .filter(|x| {
             let partiti_path = format!("{}/{}", x, partition_name);
-            let path = Path::new(partiti_path.as_str());
-            if path.exists() { true } else { false }
+            check_file_exists(&partiti_path)
         })
         .map(|x1| {
             let partiti_path = format!("{}/{}", x1, partition_name);
@@ -315,4 +317,58 @@ pub fn data_complete<'a>(
         data.insert(k, v);
     }
 
+}
+
+
+
+/**
+根据 分区信息获得活跃分区
+**/
+pub fn get_leader_partition<'a>(table_path:&str, partition_info_vec: &'a Vec<PartitionInfo>) -> Result<&'a String, DataLakeError> {
+
+    let leader_address_vec = partition_info_vec
+        .iter()
+        .filter(|x| match x.info {
+            Info::Leader => true,
+            Info::Follower => false,
+        })
+        .map(|x1| &x1.address)
+        .collect::<Vec<&String>>();
+
+    let leader_address_vec_len = leader_address_vec.len();
+
+
+    let leader_address = if leader_address_vec_len == 1 {
+        leader_address_vec[0]
+    } else {
+        if leader_address_vec_len == 0 {
+            return Err(DataLakeError::custom(format!(
+                "{}  没有Leader 的分区",
+                table_path
+            )));
+        } else if leader_address_vec_len > 1 {
+            return Err(DataLakeError::custom(format!(
+                "{}  有多个Leader的分区",
+                table_path
+            )));
+        } else {
+            return Err(DataLakeError::custom(format!(
+                "{}  的元数据出错，Leader 分区标记错乱",
+                table_path
+            )));
+        }
+    };
+
+    return Ok(leader_address);
+
+}
+
+
+
+/**
+查看路径是否存在
+**/
+pub fn check_file_exists(path: &str) -> bool {
+    let path = Path::new(path);
+    return path.exists();
 }

@@ -4,23 +4,22 @@ use tokio::net::TcpStream;
 use tokio::sync::Mutex;
 use crate::entity::MasterEntity::TableStructure;
 use crate::entity::SlaveEntity::SlaveCacheStruct;
-use crate::function::PosttingTcpStream::DataLakeTcpStream;
 
 /**
 master 端缓存的 插入slave 的 tcp 链接对象
 **/
 pub static INSERT_TCPSTREAM_CACHE_POOL: LazyLock<
-    Arc<DashMap<String, Arc<Mutex<DataLakeTcpStream>>>>,
-> = LazyLock::new(|| Arc::new(DashMap::<String, Arc<Mutex<DataLakeTcpStream>>>::new()));
+    Arc<DashMap<String, Arc<Mutex<TcpStream>>>>,
+> = LazyLock::new(|| Arc::new(DashMap::<String, Arc<Mutex<TcpStream>>>::new()));
 
 
 /**
 流读的情况下 master 端缓存的 slave tcp链接对象
 **/
 pub static STREAM_TCP_TABLESTRUCTURE: LazyLock<
-    Arc<DashMap<String, Arc<Mutex<(DataLakeTcpStream, TableStructure)>>>>,
+    Arc<DashMap<String, Arc<Mutex<(TcpStream, TableStructure)>>>>,
 > = LazyLock::new(||{
-    Arc::new(DashMap::<String, Arc<Mutex<(DataLakeTcpStream, TableStructure)>>>::new())
+    Arc::new(DashMap::<String, Arc<Mutex<(TcpStream, TableStructure)>>>::new())
 });
 
 

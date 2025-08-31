@@ -13,3 +13,5 @@ memmap2 = {workspace = true}
 uuid = { workspace = true}
 rand = {workspace = true}
 dashmap = { workspace = true }
+simple_logger = {workspace = true}
+log = {workspace = true}

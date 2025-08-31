@@ -5,7 +5,7 @@ use memmap2::Mmap;
 use std::path::Path;
 use tokio::fs::OpenOptions;
 use entity_lib::function::MASTER_CONFIG;
-use entity_lib::function::table_structure::get_table_structure;
+pub(crate) use entity_lib::function::table_structure::get_table_structure;
 
 /**
 pub struct TableStructure {

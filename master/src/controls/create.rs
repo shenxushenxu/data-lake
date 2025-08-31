@@ -1,7 +1,6 @@
 use entity_lib::entity::Error::DataLakeError;
-use entity_lib::entity::MasterEntity::{Info, PartitionInfo, TableStructure};
+use entity_lib::entity::MasterEntity::TableStructure;
 use entity_lib::entity::SlaveEntity::{SlaveCreate, SlaveMessage};
-use std::path::Path;
 use tokio::fs::OpenOptions;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
@@ -18,8 +17,7 @@ pub async fn create_table(table_structure: TableStructure) -> Result<(), DataLak
             &table_structure.table_name
         );
 
-        let path = Path::new(file_path.as_str());
-        if path.exists() {
+        if entity_lib::function::check_file_exists(&file_path) {
             return Err(DataLakeError::custom(format!(
                 "{} The table already exists.",
                 table_structure.table_name

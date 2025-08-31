@@ -1,3 +1,4 @@
+use log::error;
 use entity_lib::entity::Error::DataLakeError;
 use entity_lib::entity::SlaveEntity::SlaveMessage;
 use entity_lib::function::table_structure::get_table_structure;
@@ -50,7 +51,7 @@ pub async fn compress_table(table_name: &String) -> Result<(), DataLakeError> {
                 }
             }
             Err(e) => {
-                eprintln!("Task failed: {:?}", e);
+                error!("{} {} Task failed: {:?}",file!(), line!(), e);
                 return Err(DataLakeError::custom("压缩表数据的协程报错了。".to_string()));
             }
         }

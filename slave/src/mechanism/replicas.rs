@@ -7,6 +7,7 @@ use entity_lib::entity::SlaveEntity::{
 use entity_lib::entity::const_property::INDEX_SIZE;
 use memmap2::{Mmap, MmapMut};
 use std::path::Path;
+use log::error;
 use tokio::fs::OpenOptions;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
@@ -19,6 +20,8 @@ Follower副本 同步  Leader副本的数据
 pub async fn follower_replicas_sync(
     replicas_sync_struct: &ReplicasSyncStruct,
 ) -> Result<(), DataLakeError> {
+
+    let leader_partition_max_offset = replicas_sync_struct.leader_partition_max_offset;
     let leader_address = &replicas_sync_struct.leader_address;
     let slave_parti_name = &replicas_sync_struct.slave_parti_name;
 
@@ -31,10 +34,18 @@ pub async fn follower_replicas_sync(
         .await?;
 
     let mut metadata_mmap = unsafe { MmapMut::map_mut(&metadata_file)? };
-    let file_end_offset = i64::from_be_bytes((&metadata_mmap[..]).try_into()?);
+    let follower_partition_max_offset = i64::from_le_bytes((&metadata_mmap[..]).try_into()?);
+
+    // 如果 follower 分区的最大offset 与 leader 分区的最大offset 相等就不要同步了, 因为获得的leader 分区的offset - 1 了 所以 这里 + 1
+    if follower_partition_max_offset == (leader_partition_max_offset + 1) {
+        return Ok(());
+    }
+
+
+
 
     let sync_message = SyncMessage {
-        offset: file_end_offset,
+        offset: follower_partition_max_offset,
         partition_code: slave_parti_name.clone(),
     };
     let slave_message = SlaveMessage::leader_replicas_sync(sync_message);
@@ -87,7 +98,7 @@ pub async fn follower_replicas_sync(
             let end_offset = end_Index_struct.offset + 1;
             let dst_ptr = metadata_mmap.as_mut_ptr();
 
-            let slice = end_offset.to_be_bytes();
+            let slice = end_offset.to_le_bytes();
             let src_ptr = slice.as_ptr();
 
             std::ptr::copy_nonoverlapping(src_ptr, dst_ptr, slice.len());
@@ -101,7 +112,7 @@ pub async fn follower_replicas_sync(
         let mut mess = vec![0u8; len as usize];
         tcp_stream.read_exact(&mut mess).await?;
 
-        println!("{}", String::from_utf8(mess)?);
+        error!("{}  {}  {}",file!(), line!(), String::from_utf8(mess)?);
     }
 
     return Ok(());
@@ -115,13 +126,6 @@ pub async fn Leader_replicas_sync(
 ) -> Result<Option<ReplicaseSyncData>, DataLakeError> {
     let offset = sync_message.offset;
     let partition_code = &sync_message.partition_code;
-
-    let max_offset = controls::max_offset::get_max_offset(partition_code).await?;
-
-    if offset >= max_offset {
-        return Ok(None);
-    }
-
 
 
     let mut log_files = entity_lib::function::get_list_filename(&partition_code).await;
@@ -149,7 +153,7 @@ pub async fn Leader_replicas_sync(
         return file_code.parse::<i64>().unwrap();
     });
 
-    let option_this_offset_file = binary_search(&file_vec, offset).await?;
+    let option_this_offset_file = binary_search(&file_vec, offset, "replicas").await?;
 
     if let Some((index_name, this_offset_file_path)) = option_this_offset_file {
         let slave_replicas_sync_num = {
@@ -159,7 +163,7 @@ pub async fn Leader_replicas_sync(
         };
 
         let (index_path, _, _, start_seek) =
-            stream_read::find_data(index_name, this_offset_file_path, offset, slave_replicas_sync_num)
+            stream_read::find_data(index_name, this_offset_file_path, offset, slave_replicas_sync_num, "replicas")
                 .await?;
         
         let replicasesyncdata = load_data(index_path, start_seek, slave_replicas_sync_num).await?;
@@ -177,18 +181,27 @@ async fn load_data(
     start_seek: usize,
     slave_replicas_sync_num: usize,
 ) -> Result<ReplicaseSyncData, DataLakeError> {
-    let index_file = OpenOptions::new().read(true).open(index_path).await?;
+    let mut index_file = OpenOptions::new().read(true).open(index_path).await?;
 
-    let index_mmap = unsafe { Mmap::map(&index_file)? };
+    let mut index_mmap = unsafe { Mmap::map(&index_file)? };
     let mut index_end_seek = start_seek + (INDEX_SIZE * slave_replicas_sync_num);
-    let index_len = index_mmap.len();
+    let mut index_len = index_mmap.len();
 
     if index_len < index_end_seek {
-        index_end_seek = index_len;
+        index_end_seek = loop {
+            if index_len % INDEX_SIZE == 0 {
+                break index_len;
+            }else {
+                index_file = OpenOptions::new().read(true).open(index_path).await?;
+                index_mmap = unsafe { Mmap::map(&index_file)? };
+                index_len = index_mmap.len();
+            }
+        };
     }
 
     // 获得索引
     let offset_set = &index_mmap[start_seek..index_end_seek];
+
 
     // 获得 数据
     let data_start_seek = {

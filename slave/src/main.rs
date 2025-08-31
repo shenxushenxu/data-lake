@@ -12,6 +12,8 @@ use crate::mechanism::replicas::{Leader_replicas_sync, follower_replicas_sync};
 use chrono::{Datelike, Timelike};
 use entity_lib::entity::SlaveEntity::SlaveMessage;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use log::info;
+use simple_logger::SimpleLogger;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
 use tokio::task::JoinHandle;
@@ -34,17 +36,17 @@ async fn main() {
     
     {
         let args: Vec<String> = std::env::args().collect();
-        println!("{:?}", args);
+        info!("{:?}", args);
 
         let file_path = args.get(1).unwrap();
         let map = load_properties(file_path);
-
+        
         let slave_node = map.get("slave.node").unwrap().clone();
         let slave_data = map.get("slave.data").unwrap().clone();
         let slave_file_segment_bytes = map.get("slave.file.segment.mb").unwrap().clone();
         let slave_replicas_sync_num = map.get("slave.replicas.sync.number").unwrap().clone();
-        let slave_insert_cache_time_second = map.get("slave.insert.cache.time.second").unwrap().clone();
-
+        let slave_insert_cache_time_second = map.get("slave.insert.cache.time.minute").unwrap().clone();
+        let slave_compaction_log_retain_number = map.get("slave.compaction.log.retain.number").unwrap().clone();
 
         let slave_data_vec = slave_data
             .split(",")
@@ -53,8 +55,8 @@ async fn main() {
 
         let slave_file_segment_bytes = slave_file_segment_bytes.parse::<usize>().unwrap() * 1048576;
         let slave_replicas_sync_num = slave_replicas_sync_num.parse::<usize>().unwrap();
-        let slave_insert_cache_time_second = slave_insert_cache_time_second.parse::<u64>().unwrap();
-
+        let slave_insert_cache_time_second = slave_insert_cache_time_second.parse::<u64>().unwrap() * 60 * 1000;
+        let slave_compaction_log_retain_number = slave_compaction_log_retain_number.parse::<i32>().unwrap();
 
         let mut slave_config = SLAVE_CONFIG.lock().await;
         unsafe {
@@ -64,16 +66,17 @@ async fn main() {
                 slave_file_segment_bytes,
                 slave_replicas_sync_num,
                 slave_insert_cache_time_second,
+                slave_compaction_log_retain_number,
             );
         }
     }
 
     // 初始化日志系统
-    env_logger::init();
+    SimpleLogger::new().with_utc_timestamps().init().unwrap();
 
     let slave = data_read_write();
     let regular_cleaning = regular_cleaning_file_cache();
-    println!("slave  启动成功.......");
+    info!("slave  启动成功.......");
     tokio::join!(slave, regular_cleaning);
 }
 
@@ -296,8 +299,10 @@ fn data_read_write() -> JoinHandle<()> {
                                 SlaveMessage::max_offset(partition_code) => {
                                     match get_max_offset(&partition_code).await {
                                         Ok(offset) => {
-                                            write.write_i32(8).await.unwrap();
-                                            write.write_i64(offset).await.unwrap();
+                                            let offset_bytes = offset.to_le_bytes().to_vec();
+                                            let bytes_len = (offset_bytes.len() as i32);
+                                            write.write_i32(bytes_len).await.unwrap();
+                                            write.write_all(&offset_bytes).await.unwrap();
                                         }
                                         Err(e) => {
                                             entity_lib::function::write_error(e, &mut write).await;
@@ -326,8 +331,8 @@ fn data_read_write() -> JoinHandle<()> {
                                 }
                             }
                             
-
-                            // println!("master 与 slave 的连接断开了:  {}", e);
+                            
+                            info!("master 与 slave 的连接断开了:  {}", e);
                             break;
                         }
                     }
