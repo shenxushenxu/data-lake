@@ -54,7 +54,7 @@ pub async fn drop_table_operation(table_name: &String) -> Result<(), DataLakeErr
        
     }
 
-    
+
 
     return Ok(());
 }

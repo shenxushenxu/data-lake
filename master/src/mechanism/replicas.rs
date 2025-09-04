@@ -40,12 +40,14 @@ pub fn copy_sync_notif() -> JoinHandle<Result<(), DataLakeError>> {
 
                 for table_path in table_path_vec {
                     table_join_handle_set.spawn(async move {
-                        let file = OpenOptions::new().read(true).open(&table_path).await?;
+                        let mut file = OpenOptions::new().read(true).open(&table_path).await?;
+                        let file_len = file.metadata().await?.len();
 
-                        let mmap = unsafe { Mmap::map(&file) }?;
-                        let metadata_message = &mmap[..];
+                        let mut metadata_bytes = vec![0u8; file_len as usize];
+                        file.read_exact(metadata_bytes.as_mut_slice()).await?;
+
                         let table_structure =
-                            bincode::deserialize::<TableStructure>(metadata_message)?;
+                            bincode::deserialize::<TableStructure>(metadata_bytes.as_mut_slice())?;
 
                         let par_address = table_structure.partition_address;
                         let table_name = table_structure.table_name;
@@ -127,7 +129,7 @@ pub fn copy_sync_notif() -> JoinHandle<Result<(), DataLakeError>> {
 
             if let Ok(sync_res) = table_sync.await {
                 if let Err(e) = sync_res {
-                    info!("replicase报错： {}", e);
+                    error!("replicase报错： {}", e);
                 }
             }
         }

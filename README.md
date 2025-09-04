@@ -41,10 +41,14 @@ DataLakeDB 是一款使用RUST实现的分布式数据库系统，专为海量�
   <br>master.data.port : 表示master 的地址和端口
   <br>master.data.path ：表示mester的数据存储位置
   <br>slave.nodes ：表示slave的地址和端口
+
   <br> slave_config.properties
   <br>slave.node : slave的地址和端口
   <br>slave.data : slave的数据存储位置
   <br>slave.file.segment.bytes : slave每个文件块的大小（单位是mb）
+  <br>slave.insert.cache.time.minute : slave缓存的 文件插入对象的定时清理时间（缓冲的文件对象如果超过配置的时间未被使用的话，就会清理掉）
+  <br>slave.compaction.log.retain.number : slave保存的剩余的 未合并文件的个数
+
 ### data-lake-client
   项目的客户端
 ### master
@@ -75,21 +79,6 @@ cargo run --release -- masterip:masterprot
 ## 批量插入数据：
 <br>{"batch_insert":{"data":[{"id":"0","_crud_type":"insert","username":"data-lake","age":"1","xingbie":"0"},{"id":"1","_crud_type":"insert","username":"data-lake","age":"1","xingbie":"0"},{"id":"2","_crud_type":"insert","username":"data-lake","age":"1","xingbie":"0"},{"id":"3","_crud_type":"insert","username":"data-lake","age":"1","xingbie":"0"},{"id":"4","_crud_type":"insert","username":"data-lake","age":"1","xingbie":"0"},{"id":"5","_crud_type":"insert","username":"data-lake","age":"1","xingbie":"0"},{"id":"6","_crud_type":"insert","username":"data-lake","age":"1","xingbie":"0"},{"id":"7","_crud_type":"insert","username":"data-lake","age":"1","xingbie":"0"},{"id":"8","_crud_type":"insert","username":"data-lake","age":"1","xingbie":"0"},{"id":"9","_crud_type":"insert","username":"data-lake","age":"1","xingbie":"0"},{"id":"10","_crud_type":"insert","username":"data-lake","age":"1","xingbie":"0"}],"table_name":"table_name"}}
 
-## 指定分区号，批量插入数据：
-<br>{"batch_insert":{"data":[{"id":"0","_crud_type":"insert","username":"data-lake","age":"1","xingbie":"0"},{"id":"1","_crud_type":"insert","username":"data-lake","age":"1","xingbie":"0"},{"id":"2","_crud_type":"insert","username":"data-lake","age":"1","xingbie":"0"},{"id":"3","_crud_type":"insert","username":"data-lake","age":"1","xingbie":"0"},{"id":"4","_crud_type":"insert","username":"data-lake","age":"1","xingbie":"0"},{"id":"5","_crud_type":"insert","username":"data-lake","age":"1","xingbie":"0"},{"id":"6","_crud_type":"insert","username":"data-lake","age":"1","xingbie":"0"},{"id":"7","_crud_type":"insert","username":"data-lake","age":"1","xingbie":"0"},{"id":"8","_crud_type":"insert","username":"data-lake","age":"1","xingbie":"0"},{"id":"9","_crud_type":"insert","username":"data-lake","age":"1","xingbie":"0"},{"id":"10","_crud_type":"insert","username":"data-lake","age":"1","xingbie":"0"}],"partition_code":"0","table_name":"table_name"}}
-- 如果使用了 partition_code 参数，指定了插入的批量数据的分区，尽量与data-lake master 的分区方式一致:
-`````
- fn hash_code(&self) -> i32 {
-  let mut hash = 0i32;
-  let multiplier = 31;
-  for c in self.chars() {
-  let char_value = c as i32;
-  hash = hash.wrapping_mul(multiplier).wrapping_add(char_value);
-  }
-  return hash.abs();
-  }
-`````
-也就是java 的String的hashCode 方法，并对hashcode 取绝对值
 
 
 [//]: # (## 查询表内的数据：)
@@ -119,9 +108,6 @@ cargo run --release -- masterip:masterprot
 <br>{"sql":"compress table_name"}
 
 
-
-# java客户端
-https://github.com/shenxushenxu/data-lake-java-client
 
 # 持续开发中
 1. 实现标准SQL查询接口支持(开发中.....)
