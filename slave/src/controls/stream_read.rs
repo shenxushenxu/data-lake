@@ -1,17 +1,19 @@
+use crate::controls;
 use entity_lib::entity::Error::DataLakeError;
 use entity_lib::entity::SlaveEntity::{DataStructure, IndexStruct, StreamReadStruct};
+use entity_lib::entity::bytes_reader::ArrayBytesReader;
 use entity_lib::entity::const_property::{I32_BYTE_LEN, INDEX_SIZE};
+use entity_lib::function::data_complete;
+use log::warn;
 use memmap2::Mmap;
 use rayon::prelude::*;
 use snap::raw::{Decoder, Encoder};
+use std::fmt::format;
 use std::panic::Location;
+use std::sync::Arc;
 use std::time::Instant;
-use log::warn;
 use tokio::fs::OpenOptions;
 use tokio::io::AsyncSeekExt;
-use entity_lib::entity::bytes_reader::ArrayBytesReader;
-use entity_lib::function::data_complete;
-use crate::controls;
 
 #[tokio::test]
 pub async fn eeee() {}
@@ -19,113 +21,124 @@ pub async fn eeee() {}
 pub async fn stream_read(
     streamreadstruct: &StreamReadStruct,
 ) -> Result<Option<Vec<u8>>, DataLakeError> {
-
     // 判断传输过来的offset 是否 小于最大offset
     let offset = &streamreadstruct.offset;
     let code = &streamreadstruct.partition_code;
     let table_name = &streamreadstruct.table_name;
-    let partition_code = format!("{}-{}",table_name, code);
+    let partition_code = format!("{}-{}", table_name, code);
     let max_offset = controls::max_offset::get_max_offset(&partition_code).await?;
 
     if offset >= &max_offset {
         return Ok(None);
     }
 
-
-
     let stream_return = data_read(streamreadstruct).await;
-    let col_type = &streamreadstruct.table_col_type;
+
     match stream_return {
-        Ok(stream_message) => match stream_message {
-            None => {
-                return Ok(None);
-            }
-            Some(stream_me) => {
-                let mut vec_datastructure = Vec::<DataStructure>::new();
+        Ok(stream_message) => {
+            if let Some(stream_me) = stream_message {
+                let col_type = streamreadstruct.table_col_type.clone();
 
-                let mut arraybytesreader = ArrayBytesReader::new(stream_me.as_slice());
+                let bolcking_result =
+                    tokio::task::spawn_blocking(move || -> Result<Vec<u8>, DataLakeError> {
+                        let mut vec_datastructure = Vec::<DataStructure>::new();
 
-                let mut box_bytes_vec = Vec::<&'static mut Vec<u8>>::new();
+                        let mut arraybytesreader = ArrayBytesReader::new(stream_me.as_slice());
 
-                let mut decoder = Decoder::new();
+                        let mut box_bytes_vec = Vec::<&'static mut Vec<u8>>::new();
 
-                loop {
-                    if arraybytesreader.is_stop() {
-                        break;
-                    }
+                        let mut decoder = Decoder::new();
 
-                    let mess_len = arraybytesreader.read_i32();
-                    let bytes = arraybytesreader.read_exact(mess_len as usize);
+                        loop {
+                            if arraybytesreader.is_stop() {
+                                break;
+                            }
 
-                    let message_bytes = decoder.decompress_vec(&bytes)?;
+                            let mess_len = arraybytesreader.read_i32();
+                            let bytes = arraybytesreader.read_exact(mess_len as usize);
 
-                    let box_bytes = Box::leak(Box::new(message_bytes));
+                            let message_bytes = decoder.decompress_vec(&bytes)?;
 
-                    let datastructure = {
-                        let prt_bytes = box_bytes as *mut Vec<u8>;
+                            let box_bytes = Box::leak(Box::new(message_bytes));
 
-                        let bytes = unsafe { &*prt_bytes };
+                            let datastructure = {
+                                let prt_bytes = box_bytes as *mut Vec<u8>;
 
-                        DataStructure::deserialize(bytes)
-                    };
-                    box_bytes_vec.push(box_bytes);
+                                let bytes = unsafe { &*prt_bytes };
 
-                    vec_datastructure.push(datastructure);
-                }
+                                DataStructure::deserialize(bytes)
+                            };
+                            box_bytes_vec.push(box_bytes);
 
-                vec_datastructure.par_iter_mut().for_each(|datastructure| {
-                    let data = &mut datastructure.data;
-                    let major_value = datastructure.major_value;
-                    // 补全\验证  数据
-                    data_complete(col_type, data, major_value);
-                });
-                
-                let vec_mess = match serialize_vec_dataStructure(vec_datastructure){
-                    Ok(vec_string) => {
-                        for box_leak in box_bytes_vec {
-                            unsafe { Box::from_raw(box_leak) };
+                            vec_datastructure.push(datastructure);
                         }
 
-                        vec_string
+                        vec_datastructure.par_iter_mut().for_each(|datastructure| {
+                            let data = &mut datastructure.data;
+                            let major_value = datastructure.major_value;
+                            // 补全\验证  数据
+                            data_complete(&col_type, data, major_value);
+                        });
+                        let vec_mess = match serialize_vec_dataStructure(vec_datastructure) {
+                            Ok(vec_string) => {
+                                for box_leak in box_bytes_vec {
+                                    unsafe { Box::from_raw(box_leak) };
+                                }
+
+                                vec_string
+                            }
+                            Err(e) => {
+                                return Err(DataLakeError::custom(format!(
+                                    "slave 序列化失败报错:{:?}",
+                                    e
+                                )));
+                            }
+                        };
+
+                        let mut encoder = Encoder::new();
+                        let compressed_data = encoder.compress_vec(&vec_mess)?;
+
+                        Ok(compressed_data)
+                    })
+                    .await;
+
+                match bolcking_result {
+                    Ok(compressed_data_result) => {
+                        let compressed_data = compressed_data_result?;
+                        return Ok(Some(compressed_data));
                     }
                     Err(e) => {
-                        return Err(DataLakeError::custom(format!("slave 序列化失败报错:{:?}", e)));
+                        return Err(DataLakeError::custom(format!("{}", e)));
                     }
-                };
-                
-                let mut encoder = Encoder::new();
-                let compressed_data = encoder.compress_vec(&vec_mess)?;
-
-                return Ok(Some(compressed_data));
+                }
+            } else {
+                return Ok(None);
             }
-        },
+        }
         Err(e) => {
             return Err(e);
         }
     };
 }
 
-
 fn serialize_vec_dataStructure<'a>(vec: Vec<DataStructure<'a>>) -> Result<Vec<u8>, DataLakeError> {
     let mut data_len = I32_BYTE_LEN;
     for data_structure in vec.iter() {
         data_len += data_structure.calculate_serialized_size();
     }
-    
+
     let mut data_vec = Vec::<u8>::with_capacity(data_len);
     let data_vec_ptr = data_vec.as_mut_ptr();
     let mut index = 0;
-    
-    unsafe {
 
+    unsafe {
         std::ptr::copy_nonoverlapping(
             (vec.len() as i32).to_le_bytes().as_ptr(),
             data_vec_ptr.add(index),
             I32_BYTE_LEN,
         );
         index += I32_BYTE_LEN;
-        
-        
+
         for data_structure in vec.iter() {
             let data_structure_bytes = data_structure.serialize()?;
             let data_structure_bytes_len = data_structure_bytes.len();
@@ -134,17 +147,16 @@ fn serialize_vec_dataStructure<'a>(vec: Vec<DataStructure<'a>>) -> Result<Vec<u8
                 data_vec_ptr.add(index),
                 data_structure_bytes_len,
             );
-            
+
             index += data_structure_bytes_len;
         }
 
         data_vec.set_len(index)
     }
-    
+
     if index == data_len {
-        
-        return Ok(data_vec)
-    }else {
+        return Ok(data_vec);
+    } else {
         return Err(DataLakeError::custom(format!(
             "serialize_vec_dataStructure  序列化失败  index:{}  data_len:{}",
             index, data_len
@@ -194,7 +206,8 @@ pub async fn data_read(
             return Ok(None);
         }
         Some((index_name, index_path)) => {
-            let (index_path, start_index, end_index,_) = find_data(index_name, index_path, offset, read_count,"stream_read").await?;
+            let (index_path, start_index, end_index, _) =
+                find_data(index_name, index_path, offset, read_count, "stream_read").await?;
             let stream_data = load_data(index_path, &start_index, &end_index).await?;
             return Ok(Some(stream_data));
         }
@@ -207,34 +220,49 @@ pub async fn binary_search<'a>(
     offset: i64,
     sign: &str,
 ) -> Result<Option<(&'a String, &'a String)>, DataLakeError> {
-    for (index_name, this_index_path) in file_vec {
 
-        let mut index_file = OpenOptions::new().read(true).open(this_index_path).await?;
-
-        let mut index_mmap = unsafe { Mmap::map(&index_file)? };
-
-        let mut index_len = index_mmap.len();
-        if index_len > INDEX_SIZE {
-            let index_bytes = loop{
-                if index_len % INDEX_SIZE == 0 {
-                    break &index_mmap[(index_len - INDEX_SIZE)..index_len];
-                }else {
-                    warn!("{}  {}  {} : index file  index_file_len % INDEX_SIZE != 0", sign, file!(), line!());
-
-                    index_file = OpenOptions::new().read(true).open(this_index_path).await?;
-                    index_mmap = unsafe { Mmap::map(&index_file)?};
-                    index_len = index_mmap.len();
-                }
-            };
-
-            let Index_struct = bincode::deserialize::<IndexStruct>(index_bytes)?;
-            let file_end_offset = Index_struct.offset;
-
-            if file_end_offset >= offset {
-                return Ok(Some((index_name, this_index_path)));
-            }
+    let file_vec_len = file_vec.len();
+    for index in 1..file_vec_len {
+        let (file_name, _) = file_vec.get(index).unwrap();
+        let file_code = file_name.replace(".index", "");
+        let code = file_code.parse::<i64>()?;
+        if code > offset {
+            let prior_index = index - 1;
+            let (index_name, this_index_path) = file_vec.get(prior_index).unwrap();
+            return Ok(Some((index_name, this_index_path)));
         }
     }
+
+
+    // 如果根据文件名称（文件内最小offset）找不到offset的所在索引文件， 就看最后一个索引文件内的最后一个offset
+    let (index_name, this_index_path) = file_vec.last().unwrap();
+    let mut index_file = OpenOptions::new().read(true).open(this_index_path).await?;
+    let mut index_mmap = unsafe { Mmap::map(&index_file)? };
+    let mut index_len = index_mmap.len();
+    if index_len > INDEX_SIZE {
+        let index_bytes = loop {
+            if index_len % INDEX_SIZE == 0 {
+                break &index_mmap[(index_len - INDEX_SIZE)..index_len];
+            } else {
+                warn!(
+                    "{}  {}  {} : index file  index_file_len % INDEX_SIZE != 0",
+                    sign,
+                    file!(),
+                    line!()
+                );
+                index_file = OpenOptions::new().read(true).open(this_index_path).await?;
+                index_mmap = unsafe { Mmap::map(&index_file)? };
+                index_len = index_mmap.len();
+            }
+        };
+        let Index_struct = bincode::deserialize::<IndexStruct>(index_bytes)?;
+        let file_end_offset = Index_struct.offset;
+
+        if file_end_offset >= offset {
+            return Ok(Some((index_name, this_index_path)));
+        }
+    }
+
     return Ok(None);
 }
 
@@ -263,8 +291,13 @@ pub async fn find_data<'a>(
         let mut right = loop {
             if index_file_len % INDEX_SIZE == 0 {
                 break (index_file_len / INDEX_SIZE) - 1;
-            }else {
-                println!("{} {}  {}: index file  index_file_len % INDEX_SIZE != 0", sign, file!(), line!());
+            } else {
+                println!(
+                    "{} {}  {}: index file  index_file_len % INDEX_SIZE != 0",
+                    sign,
+                    file!(),
+                    line!()
+                );
                 index_file = OpenOptions::new().read(true).open(index_path).await?;
                 index_mmap = unsafe { Mmap::map(&index_file)? };
                 index_file_len = index_mmap.len();
@@ -306,7 +339,6 @@ pub async fn find_data<'a>(
         let end_index = bincode::deserialize::<IndexStruct>(bytes_end)?;
 
         return Ok((index_path, start_index, end_index, start_seek));
-        
     } else {
         // 结尾的offset位置 没有 超出索引文件的大小
 
@@ -314,9 +346,7 @@ pub async fn find_data<'a>(
         let bytes_end = &index_mmap[(end_seek - INDEX_SIZE)..end_seek];
         let end_index = bincode::deserialize::<IndexStruct>(bytes_end)?;
         return Ok((index_path, start_index, end_index, start_seek));
-
     }
-
 }
 
 async fn load_data(
@@ -340,7 +370,6 @@ async fn load_data(
     let end_file_seek = end_index.end_seek as usize;
 
     let read_data = &data_mmap[start_file_seek..end_file_seek];
-
 
     return Ok(read_data.to_vec());
 }
